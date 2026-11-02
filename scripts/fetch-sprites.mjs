@@ -1,0 +1,37 @@
+// Downloads a PokéAPI pixel sprite for every species in public/dex.json into public/sprites.json,
+// so sprites load from the app itself (Claude pages block images from other sites).
+// Run: node scripts/fetch-sprites.mjs
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const ART = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+const slug = s => String(s).trim().toLowerCase().replace(/♀/g, '-f').replace(/♂/g, '-m').replace(/[.'’:]/g, '').replace(/\s+/g, '-');
+// Same matching as resolveId in src/game/pokeapi.ts.
+function resolveId(map, name) {
+  let n = slug(name);
+  while (n) {
+    if (map[n]) return map[n];
+    const form = Object.keys(map).find(k => k.startsWith(n + '-'));
+    if (form) return map[form];
+    n = n.includes('-') ? n.slice(0, n.lastIndexOf('-')) : '';
+  }
+  return null;
+}
+
+const list = (await (await fetch('https://pokeapi.co/api/v2/pokemon?limit=2000')).json()).results;
+const map = Object.fromEntries(list.map(p => [p.name, Number(p.url.split('/').filter(Boolean).pop())]));
+const dex = JSON.parse(readFileSync('public/dex.json', 'utf8')).s;
+const names = {}, img = {};
+for (const sp of Object.values(dex)) { const id = resolveId(map, sp.n); if (id) names[slug(sp.n)] = id; }
+const ids = [...new Set(Object.values(names))];
+let done = 0, failed = 0;
+for (let i = 0; i < ids.length; i += 20) {
+  await Promise.all(ids.slice(i, i + 20).map(async id => {
+    const r = await fetch(ART + id + '.png');
+    if (!r.ok) { failed++; return; }
+    img[id] = 'data:image/png;base64,' + Buffer.from(await r.arrayBuffer()).toString('base64');
+    done++;
+  }));
+}
+for (const [n, id] of Object.entries(names)) if (!img[id]) delete names[n];
+writeFileSync('public/sprites.json', JSON.stringify({ names, img }));
+console.log(`${Object.keys(names).length} species, ${done} sprites, ${failed} missing`);

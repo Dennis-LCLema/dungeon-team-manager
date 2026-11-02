@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { lsGet, lsSet, uid } from '../lib/util';
 import type { AttackResult, Char, Shared, User } from './types';
 
-export const LS_KEY = 'pmd-team-v2';
+export const LS_KEY = 'pmd-team-v3';
 const ME_KEY = 'pmd-me';
 
 const DEFAULT_USERS: User[] = [

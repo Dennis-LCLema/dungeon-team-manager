@@ -35,10 +35,12 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 
 | Where | Shared team? | Best for |
 |---|---|---|
-| **Claude link** (the main game) | ✅ Everyone shares one live team | Game night |
-| **GitHub Pages** | ❌ Each device keeps its own team | Trying it out, a solo DM screen, a backup |
+| **Claude link** | ✅ Everyone shares one live team | Groups where everyone has a Claude account |
+| **GitHub Pages** | ✅ Everyone with the same **game code** shares one live team (through Firebase) | Anyone with a browser |
 
-On GitHub Pages, move a team between devices with **Admin → Export whole team** and **Import**.
+**Joining a game on GitHub Pages:** open the site, type the **game code** from your DM in the *Join your game* box, then log in. Codes are 8–40 letters, numbers or dashes. Anyone with the site and the code can join, so keep the code within your group. Without a code, the team stays on that one device.
+
+The shared database is Google Firebase (project settings in `src/game/firebase.ts`, access rules in `firestore.rules`).
 
 Log in with your name. The default password is your name in lowercase (for example `luis`), until you change it.
 

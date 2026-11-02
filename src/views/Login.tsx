@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { run } from '../components/common';
+import { FIREBASE_CONFIG, gameCode, setGameCode, validCode } from '../game/firebase';
 import { G, checkPw, owns, setUi, toast, useGame } from '../game/store';
 
 export default function Login() {
@@ -20,6 +21,7 @@ export default function Login() {
 
   return (
     <main className="gutter">
+      {FIREBASE_CONFIG && !window.claude?.use ? <GameCode /> : null}
       <section className="card login">
         <h2>Who's playing?</h2>
         <p className="small muted" style={{ marginTop: 0 }}>Pick your name, then type your password.</p>
@@ -41,5 +43,31 @@ export default function Login() {
         <p className="small muted" style={{ marginBottom: 0 }}>Forgot it? Ask Dennis to reset your password.</p>
       </section>
     </main>
+  );
+}
+
+/** Outside Claude, a shared game code puts every device on the same team. */
+function GameCode() {
+  const cur = gameCode(), [code, setCode] = useState(cur), [open, setOpen] = useState(!cur);
+  const join = () => {
+    if (!validCode(code)) return toast('Use 8 to 40 letters, numbers or dashes, like labyrinth-crew-42.', 'bad');
+    setGameCode(code);
+  };
+  if (!open) return (
+    <section className="card login row between">
+      <span>Game: <b className="mono">{cur}</b></span>
+      <button className="btn sm ghost" onClick={() => setOpen(true)}>Change</button>
+    </section>
+  );
+  return (
+    <section className="card login">
+      <h2>Join your game</h2>
+      <p className="small muted" style={{ marginTop: 0 }}>Type the game code from your DM. Everyone with the same code shares one team. {cur ? '' : 'Without a code, the team stays on this device only.'}</p>
+      <form className="row" style={{ alignItems: 'flex-end' }} onSubmit={e => { e.preventDefault(); join(); }}>
+        <label style={{ flex: 1 }}>Game code<input value={code} autoCapitalize="none" autoComplete="off" spellCheck={false} placeholder="e.g. labyrinth-crew-42" onChange={e => setCode(e.target.value)} /></label>
+        <button className="btn primary" type="submit">Join</button>
+        {cur ? <button className="btn ghost" type="button" onClick={() => { setCode(cur); setOpen(false); }}>Cancel</button> : null}
+      </form>
+    </section>
   );
 }

@@ -203,3 +203,11 @@ describe('field effects', () => {
     expect(G().game.battle!.fx).toEqual([]);
   });
 });
+
+describe('game codes', () => {
+  it('need 8 to 40 letters, numbers or dashes', async () => {
+    const { validCode } = await import('./firebase');
+    expect(['labyrinth-crew-42', 'ABCDEFGH', ' team-1234 '].map(validCode)).toEqual([true, true, true]);
+    expect(['short', 'has space here', 'emoji🔥code', 'a'.repeat(41)].map(validCode)).toEqual([false, false, false, false]);
+  });
+});

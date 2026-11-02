@@ -1,8 +1,9 @@
-/* Shared team sync through the Claude artifact database. Outside Claude (for example on GitHub Pages)
-   there is no shared database, so the team stays saved on each device. Document paths and shapes match
+/* Shared team sync through the Claude artifact database, or through Firebase outside Claude (see firebase.ts).
+   With neither, the team stays saved on each device. Document paths and shapes match
    the original app, so an existing shared team keeps working. */
 import { G, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast } from './store';
 import type { Char, LogEntry, Shared, SharedDocKey } from './types';
+import { FIREBASE_CONFIG, firebaseDb, gameCode } from './firebase';
 
 const DOCS: Record<SharedDocKey, string> = {
   game: 'game/current', dungeon: 'game/dungeon', loot: 'game/loot', rules: 'config/rules',
@@ -81,13 +82,18 @@ function watchDoc(k: SharedDocKey, path: string) {
 
 export async function initSync() {
   setLocalChangeHandler(scheduleFlush);
-  if (!window.claude?.use) return;
-  try { db = await window.claude.use('db'); } catch { db = null; }
-  if (!db) return;
-  try {
-    const user = await window.claude.use('user');
-    if (user?.can && (await user.can('data.write')) === false) setRemote({ readOnly: true });
-  } catch { /* no user capability */ }
+  if (window.claude?.use) {
+    try { db = await window.claude.use('db'); } catch { db = null; }
+    if (!db) return;
+    try {
+      const user = await window.claude.use('user');
+      if (user?.can && (await user.can('data.write')) === false) setRemote({ readOnly: true });
+    } catch { /* no user capability */ }
+  } else {
+    const code = gameCode();
+    if (!FIREBASE_CONFIG || !code) return;
+    try { db = await firebaseDb(code); } catch { db = null; toast('Could not reach the shared team. Check your internet, then reload.', 'bad'); return; }
+  }
   db.collection('chars').onSnapshot((snap: any) => {
     const remoteChars: Char[] = snap.docs.filter((d: any) => d.exists).map((d: any) => clone(d.data()));
     const s = G();

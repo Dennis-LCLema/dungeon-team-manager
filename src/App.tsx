@@ -85,7 +85,7 @@ function Shell() {
   let tab = ui.tab;
   if (tab === 'sheet' && !act) tab = dm ? 'party' : 'play';
   if (tab === 'dm' && !dm) tab = 'play';
-  if (!dm && ['dungeon', 'battle', 'world'].includes(tab)) tab = 'play';
+  if (!dm && ['dungeon', 'battle'].includes(tab)) tab = 'play';
   if (dm && tab === 'play') tab = 'party';
   if (!u) return <Login />;
 
@@ -94,7 +94,7 @@ function Shell() {
     ? [['party', 'Team'], ...(act ? [['sheet', nameOf(act)] as [string, string]] : []), ['world', 'World'], ['dungeon', 'Dungeon'],
        ['battle', 'Battle' + (b && !b.result ? ' •' : '')], ['storage', 'Storage'], ['log', 'Log'], ['dm', 'DM tools' + (nl ? ` (${nl})` : '')], ['account', 'Admin']]
     : [['play', 'Play' + (myTurnChar() ? ' •' : '')], ...(mine ? [['mine', 'My Pokémon'] as [string, string]] : []),
-       ...(act && !owns(act) ? [['sheet', nameOf(act)] as [string, string]] : []), ['party', 'Team'], ['storage', 'Storage'], ['log', 'Log']];
+       ...(act && !owns(act) ? [['sheet', nameOf(act)] as [string, string]] : []), ['world', 'World'], ['party', 'Team'], ['storage', 'Storage'], ['log', 'Log']];
   const isOn = (k: string) => tab === k || (k === 'mine' && tab === 'sheet' && owns(act));
   const go = (k: string) => {
     if (k === 'mine') { const m0 = G().chars.find(owns); setUi(m0 ? { activeId: m0.id, tab: 'sheet' } : { tab: 'play' }); }

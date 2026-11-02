@@ -30,7 +30,11 @@ export async function firebaseDb(code: string) {
   const [{ initializeApp }, fs, auth] = await Promise.all([import('firebase/app'), import('firebase/firestore'), import('firebase/auth')]);
   const app = initializeApp(FIREBASE_CONFIG!);
   await auth.signInAnonymously(auth.getAuth(app));
-  const store = fs.getFirestore(app), root = `games/${code}`;
+  // Keep a copy on the device: reopening is instant, and changes made during a Wi-Fi drop sync when it returns.
+  let store: ReturnType<typeof fs.getFirestore>;
+  try { store = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
+  catch { store = fs.getFirestore(app); /* private browsing: no device cache */ }
+  const root = `games/${code}`;
   const wrap = (ref: ReturnType<typeof fs.doc>) => ({
     onSnapshot: (cb: (s: Snap) => void, err: (e: unknown) => void) => fs.onSnapshot(ref, s => cb({ exists: s.exists(), data: () => s.data() }), err),
     set: (d: object) => fs.setDoc(ref, d),

@@ -5,6 +5,8 @@
 **A companion app for a Pokémon Mystery Dungeon–style tabletop campaign.**
 The Dungeon Master runs the world, battles and loot from one screen. Each player follows along on their own phone and acts on their Pokémon's turn.
 
+**▶ Try it: [dennis-lclema.github.io/dungeon-team-manager](https://dennis-lclema.github.io/dungeon-team-manager/)**
+
 > *Five hundred years ago, Pokémon fled a war with the humans into the Labyrinth. Thirty years ago, the Great Calamity sealed every gate and split families apart. Now the Explorers' Guild sends its youngest graduates down to open them again.*
 
 ---

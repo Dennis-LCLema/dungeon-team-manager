@@ -211,3 +211,28 @@ describe('game codes', () => {
     expect(['short', 'has space here', 'emoji🔥code', 'a'.repeat(41)].map(validCode)).toEqual([false, false, false, false]);
   });
 });
+
+describe('item notifications', () => {
+  it('reports items that arrive in my bag or team storage, not in other bags', async () => {
+    const { itemGains, blankShared } = await import('./store');
+    const mk = (id: string, player: string, items: { name: string; qty: number }[]) => ({ id, player, species: 'aron', nickname: '', items }) as unknown as Char;
+    const prev = { ...blankShared(), chars: [mk('a', 'Luis', [{ name: 'Oran Berry', qty: 1 }]), mk('b', 'Juan', [])] };
+    const next = { ...blankShared(), chars: [mk('a', 'Luis', [{ name: 'Oran Berry', qty: 3 }, { name: 'Escape Rope', qty: 1 }]), mk('b', 'Juan', [{ name: 'Potion', qty: 1 }])],
+      storage: { items: [{ name: 'Apple', qty: 1, note: '', itemId: 'apple', tm: '' }], poke: 0 } };
+    const msgs = itemGains(prev as never, next as never, c => c.player === 'Luis');
+    expect(msgs).toEqual(['🎁 Aron got Oran Berry ×2, Escape Rope!', '📦 Team storage got Apple.']);
+  });
+});
+
+describe('shiny sprites', () => {
+  it('use the bundled shiny Aron line, and the normal sprite for other shinies', async () => {
+    const sprites = JSON.parse(readFileSync('public/sprites.json', 'utf8'));
+    vi.stubGlobal('fetch', async () => ({ json: async () => sprites }));
+    const { loadSpriteIds, spriteUrl } = await import('./pokeapi');
+    await loadSpriteIds(1);
+    expect(spriteUrl('Aron', true)).toBe(sprites.shiny[sprites.names.aron]);
+    expect(spriteUrl('Aggron', true)).not.toBe(spriteUrl('Aggron', false));
+    expect(spriteUrl('Riolu', true)).toBe(spriteUrl('Riolu', false));
+    vi.unstubAllGlobals();
+  });
+});

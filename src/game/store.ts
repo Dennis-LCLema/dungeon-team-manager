@@ -84,7 +84,28 @@ export function update(recipe: (s: Shared) => void) {
 }
 
 /** Replace shared state with data that came from the shared database (no write-back of its own). */
+/** Items that arrived from another device: in a bag owned by `mine`, or in team storage. Pure, so it can be tested. */
+export function itemGains(prev: Shared, next: Shared, mine: (c: Char) => boolean): string[] {
+  const count = (items: { name: string; qty: number }[] = []) => items.reduce<Record<string, number>>((m, i) => { m[i.name] = (m[i.name] || 0) + i.qty; return m; }, {});
+  const diff = (a: Record<string, number>, b: Record<string, number>) => Object.entries(b).filter(([n, q]) => q > (a[n] || 0)).map(([n, q]) => `${n}${q - (a[n] || 0) > 1 ? ' ×' + (q - (a[n] || 0)) : ''}`);
+  const out: string[] = [];
+  next.chars.forEach(c => {
+    const old = prev.chars.find(x => x.id === c.id);
+    if (!old || !mine(c)) return; // a brand-new Pokémon (or first load) is not a gift
+    const got = diff(count(old.items), count(c.items));
+    if (got.length) out.push(`🎁 ${c.nickname || c.species.replace(/^./, x => x.toUpperCase())} got ${got.join(', ')}!`);
+  });
+  if (prev.chars.length || prev.storage.items.length) {
+    const got = diff(count(prev.storage.items), count(next.storage.items));
+    if (got.length) out.push(`📦 Team storage got ${got.join(', ')}.`);
+  }
+  return out;
+}
+
 export function replaceFromRemote(next: Shared) {
+  const gifts = uiState.meName ? itemGains(current, next, c => owns(c)) : [];
+  gifts.forEach(m => toast(m));
+  if (gifts.length) { try { navigator.vibrate?.([80, 40, 80]); } catch { /* not supported */ } }
   current = produce(next, normalize);
   persist();
   onLocalChange?.();

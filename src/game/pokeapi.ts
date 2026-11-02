@@ -6,7 +6,7 @@ const LIST = 'https://pokeapi.co/api/v2/pokemon?limit=2000';
 const ART = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
 let ids: Record<string, number> = lsGet(KEY, {});
 /** Sprites bundled with the app (scripts/fetch-sprites.mjs), so they work where other sites are blocked. */
-let local: { names: Record<string, number>; img: Record<string, string> } | null = null;
+let local: { names: Record<string, number>; img: Record<string, string>; shiny?: Record<string, string> } | null = null;
 
 /** Load the list if this browser doesn't have it yet. Never throws: offline just means no sprites. */
 export async function loadSpriteIds(timeoutMs = 4000) {
@@ -34,7 +34,8 @@ export function resolveId(map: Record<string, number>, species: string): number 
 }
 
 export function spriteUrl(species: string, shiny?: boolean) {
-  const own = !shiny && local ? local.img[local.names[slug(species)]] : undefined;
+  // Shinies without a bundled shiny sprite use the normal one (the avatar still shows a ✨ badge).
+  const id0 = local?.names[slug(species)], own = id0 ? (shiny && local?.shiny?.[id0]) || local?.img[id0] : undefined;
   if (own) return own;
   const id = resolveId(ids, species);
   return id ? `${ART}${shiny ? 'shiny/' : ''}${id}.png` : null;

@@ -4,6 +4,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const ART = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+// Shiny sprites to bundle too (each adds ~1 KB). Add species here when a player gets a shiny.
+const SHINY = ['aron', 'lairon', 'aggron'];
 const slug = s => String(s).trim().toLowerCase().replace(/♀/g, '-f').replace(/♂/g, '-m').replace(/[.'’:]/g, '').replace(/\s+/g, '-');
 // Same matching as resolveId in src/game/pokeapi.ts.
 function resolveId(map, name) {
@@ -33,5 +35,11 @@ for (let i = 0; i < ids.length; i += 20) {
   }));
 }
 for (const [n, id] of Object.entries(names)) if (!img[id]) delete names[n];
-writeFileSync('public/sprites.json', JSON.stringify({ names, img }));
-console.log(`${Object.keys(names).length} species, ${done} sprites, ${failed} missing`);
+const shiny = {};
+for (const n of SHINY) {
+  const id = names[n], r = id && await fetch(ART + 'shiny/' + id + '.png');
+  if (r && r.ok) shiny[id] = 'data:image/png;base64,' + Buffer.from(await r.arrayBuffer()).toString('base64');
+  else console.log('no shiny sprite for', n);
+}
+writeFileSync('public/sprites.json', JSON.stringify({ names, img, shiny }));
+console.log(`${Object.keys(names).length} species, ${done} sprites, ${Object.keys(shiny).length} shiny, ${failed} missing`);

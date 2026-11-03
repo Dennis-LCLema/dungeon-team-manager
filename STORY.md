@@ -58,3 +58,164 @@ A Red Rift on the deepest layer (Primordial Throne): a chamber older than the La
 
 - Who was Zoroark's sister, and is she inside the Egg?
 - What is inside the First Egg, and what happens if it hatches?
+
+---
+
+# Story by level
+
+Where each layer stands. **Needs more details** marks characters who exist in the story but have no description yet. Add to the *Your notes* lines as the campaign grows.
+
+## Characters on every layer
+
+| Character | Who they are |
+|---|---|
+| **The Trickster** (Zoroark, female, Lv 15) | The villain. Sly; disguises herself as other Pokémon but always leaves one tell (red eyes, a red tuft of fur). Takes each defeated gatekeeper's Shadow power to reach the First Egg, hoping it will bring back her lost older sister. The power is killing her; she dies before she gets there. |
+| **Zoroark's older sister** | Needs more details |
+| **Team Razorwind** (rivals, top of the class) | **Kip** (Pawniard): sharp-tongued leader, rival to Riolu; lost an older sibling in the Calamity. **Zephyr** (Rookidee): show-off flyer, rival to Hawlucha; secretly afraid of the dark. **Sable** (Fennekin): strategist, rival to Litwick; secretly admires her and will help once if treated kindly. **Pebble** (Rolycoly): loud, friendly, always hungry, rival to Aron; could switch sides. |
+| **Kip's older sibling** | Needs more details |
+| **Hearthroot Rescue Corps** (medics) | **Nurse Mabel** (Chansey): leader, mothers and scolds everyone; knew the Pale Blade. **Doc Pip** (Audino): calm in a crisis, a wreck at parties. **Lei** (Comfey): herbalist, hands out Oran Berries like candy. **Haul** (Mudbray): carried half the guild out of the Labyrinth, says almost nothing. |
+| **Players' Pokémon**: Riolu (Juan), Hawlucha (Luis), Litwick (Alfred), Aron (Christian) | Needs more details (personalities and backstories). Their hooks are listed in the layers below. |
+
+- Your notes:
+
+## Layer 0 · Lumen Rest
+**Story so far (Chapter 1, Graduation):** graduation and badges, plus 2 Escape Ropes → the graduation spar against Razorwind → Mabel's first-aid lesson → the Kecleon graduation sale → Orrin's 3 starter quests → a fake "Orrin" (Zoroark: red eyes, hooting in daylight) sends the team the wrong way → the race to the first gate, rescuing or leaving Razorwind → the gate opens and Orrin walks through to his family → a red tuft of fur slips away with the gatekeeper's Shadow power.
+
+| Character | Description |
+|---|---|
+| **Guildmaster Orrin** (Noctowl) | Runs the guild and the Adventure School. Wise, dry humour. His family has been trapped behind the first gate for 30 years. |
+| **Lark & Lev** (Kecleon) | Shop brothers. Lark haggles; Lev remembers every debt. |
+
+- Your notes:
+
+### Descent 1 · The Lantern Stair (floors 1–5)
+Carved stairs lit by guild lanterns, with roots from Verdant Hollow growing down. Each class lights one more lantern.
+- **Gatekeeper, the Pale Blade** (Shadow Scyther): once protected the forest; Mabel knew it. Needs more details (personality, what it says when purified).
+- Your notes:
+
+## Layer 1 · Verdant Hollow
+**Story so far:** nothing yet, apart from the reunion that ends Chapter 1.
+
+| Character | Description |
+|---|---|
+| **Guildmaster Ivy** (Meganium) | Orrin's mate. Gentle, tired, fierce about her village. Her scent calms even wild Pokémon. |
+| **Sage** (Hoothoot) | Orrin and Ivy's child who can't sit still. |
+| **Clover** (Chikorita) | Their other child. Hasn't forgiven her dad for taking so long. |
+| **Sylva** (Leavanny) | Tailor who fusses over every torn seam. |
+
+- Your notes:
+
+### Descent 2 · The Frostroot Falls (floors 6–10)
+Icy roots and frozen waterfalls. The team hears singing under the ice.
+- **Gatekeeper** (Shadow Lapras): Old Maren's child, lost in the Calamity. Needs more details (name, personality).
+- Your notes:
+
+## Layer 2 · Tidecaller Grotto
+**Story so far:** nothing yet.
+
+| Character | Description |
+|---|---|
+| **Old Maren** (Lapras) | Guildmaster and the oldest Pokémon on the sea. Sings to the boats. Her child is the gatekeeper. |
+| **Old Barb** (Barbaracle) | Trader with seven heads and seven opinions on every price. |
+
+- Your notes:
+
+### Descent 3 · The Thousand Falls (floors 11–15)
+Endless waterfalls with a storm trapped on the ceiling. Zephyr gets caught in the lightning.
+- **Gatekeeper** (Shadow Zapdos): once kept the storm in balance. Needs more details.
+- Your notes:
+
+## Layer 3 · Stormspire Highlands
+**Story so far:** nothing yet. Hook: a sky-duel tournament that Hawlucha is invited to.
+
+| Character | Description |
+|---|---|
+| **Captain Volta** (Luxray) | Guildmaster. Stern, fair, always short on scouts. |
+| **Dynamo** (Heliolisk) | Quartermaster who charges extra during storms, which is always. |
+
+- Your notes:
+
+### Descent 4 · The Divide (floors 16–20)
+Storm on one side, lava on the other. The team picks which side to cross on.
+- **Gatekeeper** (Shadow Moltres): once kept the caldera's fires livable. Needs more details.
+- Your notes:
+
+## Layer 4 · Emberdeep Caldera
+**Story so far:** nothing yet. Hook: Rasp is the first real lead on the Trickster.
+
+| Character | Description |
+|---|---|
+| **Brother Smolder** (Torkoal) | Guildmaster; slow-talking monk who reads the lava. Knows about Rasp's shard trade but is too afraid to act. |
+| **Rasp** (Krookodile) | Friendly merchant who secretly sells Shadow shards and has dealt with the Trickster. |
+
+- Your notes:
+
+### Descent 5 · The Lantern Drift (floors 21–25)
+Floating lanterns carry memories of the lost; one follows Litwick.
+- **Gatekeeper** (Shadow Gengar): once guided lost souls, now collects them. Needs more details.
+- Your notes:
+
+## Layer 5 · Duskwood Necropolis
+**Story so far:** nothing yet. Hook: Litwick's test, to become a guiding light or a Shadow.
+
+| Character | Description |
+|---|---|
+| **Sister Wick** (Chandelure) | Guildmaster who lights the soul-lanterns. Will test Litwick. |
+| **Glint** (Sableye) | Fence: buys and sells anything, eats the gems he doesn't like. |
+
+- Your notes:
+
+### Descent 6 · The Crystal Crypts (floors 26–30)
+Crypt crystals show memories. Riolu's first glimpse of the Mirror of Regrets.
+- **Gatekeeper** (Shadow Gardevoir): once protected the dreamers, now traps them. Needs more details.
+- Your notes:
+
+## Layer 6 · Mirage Sanctum
+**Story so far:** nothing yet.
+
+| Character | Description |
+|---|---|
+| **The Watcher** (Xatu) | Guildmaster who stares at the sky for days and speaks in short, strange answers. |
+| **Madame Tessel** (Hatterene) | Sells charms and dreams in bottles; asks you to keep your thoughts quiet. |
+| **The Lucario Riolu once failed** | Needs more details |
+
+- Your notes:
+
+### Descent 7 · The Rusted Vein (floors 31–35)
+Crystal walls beside rusted pipes. Ferra's forge marks match Aron's shell.
+- **Gatekeeper** (Shadow Metagross): once ran the city's machines with care. Needs more details.
+- Your notes:
+
+## Layer 7 · Ironroot Foundry
+**Story so far:** nothing yet. Hook: why Aron's shell was left behind.
+
+| Character | Description |
+|---|---|
+| **Forgemother Ferra** (Aggron) | Guildmaster and smith with battle-scarred armour. She forged Aron's shell. |
+| **Bolt** (Klinklang) | Scrap dealer: three gears, one voice. |
+
+- Your notes:
+
+### Descent 8 · The Spine of the World (floors 36–40)
+A machine city built on a titan's skeleton. Basalt's sandstorm thickens each floor; Zoroark is at her weakest here.
+- **Gatekeeper** (Shadow Lugia): once sealed the First Egg; Basalt has held it back for 30 years. Needs more details.
+- Your notes:
+
+## Layer 8 · Primordial Throne
+**Story so far:** nothing yet. The finale: Basalt at the last gate, then the First Egg.
+
+| Character | Description |
+|---|---|
+| **Guildmaster Basalt** (Tyranitar, Lv 20) | The strongest guildmaster ever. Intense, blunt, missing for 30 years. Holds back Shadow Lugia at the last gate, tells the team they're late, then fights beside them. |
+| **Elder Vael** (Dragonite) | Acting leader; remembers the world before the Calamity. Saw the Egg crack, and never forgave himself for letting Basalt go. |
+| **Facet** (Carbink) | Gem trader, older than the war; trades only with explorers it trusts. |
+| **What hatches from the First Egg** | Needs more details (the final boss) |
+
+- Your notes:
+
+## Biggest gaps to fill next
+1. The players' Pokémon personalities
+2. Zoroark's sister
+3. The 7 unnamed gatekeepers
+4. What's inside the First Egg
+5. Story beats for Chapters 2–8

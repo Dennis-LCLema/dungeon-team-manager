@@ -22,8 +22,8 @@ async function importJSON(text: string) {
 }
 
 const HOUSE_RULES = [
-  'Status moves like Thunder Wave, Will-O-Wisp, Toxic, Sleep Powder and Confuse Ray resolve themselves: the target saves (CON vs paralysis and poison, DEX vs burn, WIS vs sleep and confusion) against the move's DC.',
-  'Ability checks: d20 + the stat's modifier (STR Attack, DEX Speed, CON Defense, INT Sp. Atk, WIS Sp. Def, CHA Heart).',
+  'Status moves like Thunder Wave, Will-O-Wisp, Toxic, Sleep Powder and Confuse Ray resolve themselves: the target saves (CON vs paralysis and poison, DEX vs burn, WIS vs sleep and confusion) against the move’s DC.',
+  'Ability checks: d20 + the stat’s modifier (STR Attack, DEX Speed, CON Defense, INT Sp. Atk, WIS Sp. Def, CHA Heart).',
   'Levels 1–20. Every D&D level equals 5 Pokémon game levels (Mudkip evolves at 16 → level 4).',
   'Ability scores = 6 + base stat ÷ 12 (max 20 before bonuses).',
   'Hero HP at level 1 = hit die + Defense modifier + base HP ÷ 5 + 10. Each level after adds an average hit die roll + Defense modifier + 1.',

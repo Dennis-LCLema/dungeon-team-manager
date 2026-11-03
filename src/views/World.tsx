@@ -359,8 +359,39 @@ export default function WorldView() {
   });
   const vote = (id: string) => update(d => { const nm = me()!.name; if (d.world.votes[nm] === id) delete d.world.votes[nm]; else d.world.votes[nm] = id; });
 
+  const [view, setView] = useState<'map' | 'quests' | 'people'>('map');
+  const openQuests = w.quests.filter(q => !q.done).length;
+  const places = (
+    <section className="card">
+      <h2>Places in {L.n}</h2>
+      <p className="small muted" style={{ marginTop: 0 }}>{dm ? 'Players vote on where to go. You make the final call.' : 'Vote on where the team goes next. Dennis makes the final call.'}</p>
+      {nodes.map(n => {
+        const K = KIND[n.kind], v = votes[n.id] || [], isHere = n.id === here.id;
+        return (
+          <div className={`list-item place ${n.id === sel ? 'sel' : ''}`} key={n.id}>
+            <span className="pglyph" style={{ color: n.kind === 'haven' && n.t ? TCOL[n.t] : K.c }}>{K.g}</span>
+            <span className="grow"><b>{n.n}</b> <span className="small muted">{K.n}{n.t ? ' · ' + T(n.t) : ''}{n.kind === 'rift' && w.rifts[n.id] ? ' · sealed' : ''}</span>
+              {v.length ? <div className="small">Votes: {v.join(', ')}</div> : null}</span>
+            {isHere ? <span className="tag good">Team is here</span>
+              : dm ? <button className={`btn sm ${v.length ? 'primary' : ''}`} onClick={() => travel(n.id)}>Travel{v.length ? ` (${v.length})` : ''}</button>
+              : <button className={`btn sm ${myVote === n.id ? 'primary' : ''}`} aria-pressed={myVote === n.id} onClick={() => vote(n.id)}>{myVote === n.id ? 'Voted' : 'Vote'}</button>}
+          </div>
+        );
+      })}
+    </section>
+  );
+  const tabs = (
+    <div className="row subtabs" role="tablist" aria-label="World sections">
+      {([['map', '🗺️ Map'], ['quests', `📜 Quests${openQuests ? ` (${openQuests})` : ''}`], ['people', '🧑‍🤝‍🧑 Characters']] as const).map(([key, label]) => (
+        <button key={key} role="tab" aria-selected={view === key} className={`btn sm ${view === key ? 'primary' : ''}`} onClick={() => setView(key)}>{label}</button>
+      ))}
+    </div>
+  );
+  if (view === 'quests') return <>{tabs}<QuestCard /></>;
+  if (view === 'people') return <>{tabs}<TeamsCard k={k} /><CastCard k={k} /></>;
   return (
     <>
+      {tabs}
       {dg.state !== 'idle' ? (
         <section className="card callout row between">
           <span>{dg.state === 'prep' ? 'Getting ready for' : 'The team is in'} <b>{dg.name}</b>{dg.state === 'in' ? `, floor ${dg.floor}` : ''}.</span>
@@ -381,28 +412,8 @@ export default function WorldView() {
         <div className="wmapwrap"><WorldMap k={k} nodes={nodes} sel={sel} onSel={onSel} /></div>
       </section>
       <div className="dgrid wgrid">
-        <AreaPanel n={here} k={k} />
-        <section className="card">
-          <h2>Places in {L.n}</h2>
-          <p className="small muted" style={{ marginTop: 0 }}>{dm ? 'Players vote on where to go. You make the final call.' : 'Vote on where the team goes next. Dennis makes the final call.'}</p>
-          {nodes.map(n => {
-            const K = KIND[n.kind], v = votes[n.id] || [], isHere = n.id === here.id;
-            return (
-              <div className={`list-item place ${n.id === sel ? 'sel' : ''}`} key={n.id}>
-                <span className="pglyph" style={{ color: n.kind === 'haven' && n.t ? TCOL[n.t] : K.c }}>{K.g}</span>
-                <span className="grow"><b>{n.n}</b> <span className="small muted">{K.n}{n.t ? ' · ' + T(n.t) : ''}{n.kind === 'rift' && w.rifts[n.id] ? ' · sealed' : ''}</span>
-                  {v.length ? <div className="small">Votes: {v.join(', ')}</div> : null}</span>
-                {isHere ? <span className="tag good">Team is here</span>
-                  : dm ? <button className={`btn sm ${v.length ? 'primary' : ''}`} onClick={() => travel(n.id)}>Travel{v.length ? ` (${v.length})` : ''}</button>
-                  : <button className={`btn sm ${myVote === n.id ? 'primary' : ''}`} aria-pressed={myVote === n.id} onClick={() => vote(n.id)}>{myVote === n.id ? 'Voted' : 'Vote'}</button>}
-              </div>
-            );
-          })}
-        </section>
+        {dm ? <><AreaPanel n={here} k={k} />{places}</> : <>{places}<AreaPanel n={here} k={k} /></>}
       </div>
-      <QuestCard />
-      <TeamsCard k={k} />
-      <CastCard k={k} />
     </>
   );
 }

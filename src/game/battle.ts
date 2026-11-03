@@ -312,13 +312,24 @@ export function autoTurn() {
   if (!actor || isOut(actor)) { nextTurn(); return; }
   const side = sideOf(cur), targets = b.order.filter(o => sideOf(o) !== side && !isOut(bGet(o))).map(o => bGet(o)!) as Fighter[];
   if (!targets.length) { checkEnd(); return; }
-  const focus = actor.kind === 'enemy' && actor.focus ? targets.find(x => x.id === actor.focus) : undefined;
-  const t = focus || targets[roll(targets.length) - 1];
+  const smart = actor.kind === 'enemy' && !!actor.rival;
+  // How hard this fighter's best damaging move hits a target (Flash Fire soaks up Fire).
+  const punch = (x: Fighter) => Math.max(0, ...actor.moves.filter(m => m.dice && (m.ppMax == null || m.ppCur > 0))
+    .map(m => (m.type === 'fire' && abilityOf(x) === 'flash-fire' ? 0 : effectiveness(m.type, x))));
+  let focus = actor.kind === 'enemy' && actor.focus ? targets.find(x => x.id === actor.focus) : undefined;
+  if (smart && focus && punch(focus) < 1) focus = undefined; // a smart rival doesn't keep hitting a wall
+  // Rivals otherwise pick the target they hit hardest, then the weakest; everyone else picks at random.
+  const plan = () => targets.slice().sort((p, q) => punch(q) - punch(p) || p.hpCur / hpMaxOf(p) - q.hpCur / hpMaxOf(q))[0];
+  const t = focus || (smart ? plan() : targets[roll(targets.length) - 1]);
+  const STRUGGLE = () => customMove('struggle', 'typeless', 'physical', '1d8', null, 'Used when no other move can hit.');
   const usable = actor.moves.filter(m => m.dice && (m.ppMax == null || m.ppCur > 0));
-  const pool = usable.length ? usable : actor.moves.filter(m => m.ppMax == null || m.ppCur > 0);
-  if (!pool.length) { blog(`${nameOf(actor)} has no moves left and waits.`); nextTurn(); return; }
+  // Out of damaging moves (no PP left): Struggle, as in the games, so a fight can't stall forever.
+  const pool = usable.length ? usable : [STRUGGLE()];
   const best = pool.slice().sort((p, q) => effectiveness(q.type, t) - effectiveness(p.type, t))[0];
-  resolveMove(actor, roll(3) < 3 ? best : pool[roll(pool.length) - 1], t);
+  let mv = smart || roll(3) < 3 ? best : pool[roll(pool.length) - 1];
+  // Nothing it knows can touch this target: Struggle too.
+  if (pool.every(m => effectiveness(m.type, t) === 0)) mv = STRUGGLE();
+  resolveMove(actor, mv, t);
   checkEnd();
   nextTurn();
 }
@@ -328,17 +339,35 @@ const lineRoot = (species: string) => { let r = species.toLowerCase().replace(/[
 
 /** Chapter 1's graduation spar: Team Razorwind at the players' levels, each rival going after the player it chose. */
 export function startRivalSpar() {
-  const s = G(), party = s.chars.filter(c => c.player).length ? s.chars.filter(c => c.player) : s.chars;
+  const s = G(), party = rivalParty();
   if (!party.length) throw new Error('Add the team first.');
-  const avg = Math.max(1, Math.round(party.reduce((t, c) => t + c.level, 0) / party.length));
-  const enemies = CAST.filter(c => c.team === 'rivals').map(r => {
+  const enemies = buildRivals(CAST.filter(c => c.team === 'rivals').map(c => c.id));
+  s.world.sparDone = true;
+  startBattle(party.map(c => c.id), enemies, null, 'normal', 'The graduation spar! Team Razorwind steps into the ring, and each rival has already picked a target.');
+  addLog('The graduation spar against Team Razorwind begins!');
+}
+
+const rivalParty = () => { const s = G(), p = s.chars.filter(c => c.player); return p.length ? p : s.chars; };
+/** Team Razorwind members as fighters: same level as the player each one chose, hero-grade HP, smart moves. */
+export function buildRivals(ids: string[]): Enemy[] {
+  const s = G(), party = rivalParty();
+  const avg = party.length ? Math.max(1, Math.round(party.reduce((t, c) => t + c.level, 0) / party.length)) : 1;
+  return CAST.filter(c => ids.includes(c.id)).map(r => {
     const mark = party.find(c => lineRoot(c.species) === r.rivalOf);
     const e = buildEnemy(r.species, mark?.level ?? avg, false, 'enemy');
     e.name = `${r.name} (${T(r.species)})`;
-    if (mark) e.focus = mark.id;
+    e.rival = true;
+    if (mark) {
+      e.focus = mark.id;
+      // Same strength as the Pokémon they chose: scale base stats up to its stat total (Rookidee vs Hawlucha is otherwise no contest).
+      const total = (x: { base: Record<string, number> }) => Object.values(x.base).reduce((t, v) => t + v, 0);
+      const k = Math.min(2.5, Math.max(1, total(mark) / total(e)));
+      // Offence and speed scale fully; HP and defences only by the square root, so fights stay short.
+      Object.keys(e.base).forEach(key => { (e.base as Record<string, number>)[key] = Math.round((e.base as Record<string, number>)[key] * (['atk', 'spa', 'spe'].includes(key) ? k : Math.sqrt(k))); });
+    }
+    // Fellow graduates: they get the same HP formula as the heroes, so it's an even fight.
+    e.hpMax = e.hpCur = maxHP({ ...e, kind: undefined } as unknown as Char);
     s.world.met[r.id] = true;
     return e;
   });
-  startBattle(party.map(c => c.id), enemies, null, 'normal', 'The graduation spar! Team Razorwind steps into the ring, and each rival has already picked a target.');
-  addLog('The graduation spar against Team Razorwind begins!');
 }

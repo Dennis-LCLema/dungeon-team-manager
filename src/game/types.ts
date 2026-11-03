@@ -41,6 +41,8 @@ export interface Enemy extends Mon {
   boss?: boolean; gatekeeper?: boolean; rift?: boolean; minion?: boolean; outReason?: string; killer?: string; overworld?: boolean;
   /** Id of the team member this foe goes after first (a rival). */
   focus?: string;
+  /** A Team Razorwind rival: hero-grade HP and smart move choices. */
+  rival?: boolean;
 }
 export type Fighter = Char | Enemy;
 
@@ -90,7 +92,7 @@ export interface Announce { id: string; title: string; sub: string; tone: string
 export interface Quest { id: string; title: string; giver: string; xp: number; poke: number; item?: string; qty?: number; done?: boolean }
 export interface World {
   layer: number; at: string; unlocked: number[]; deepest: number; votes: Record<string, string>;
-  shop: Record<string, { stock: LootLine[]; off?: number }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean;
+  shop: Record<string, { stock: LootLine[]; off?: number }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean; sparDone?: boolean;
 }
 export interface User { name: string; role: 'dm' | 'player'; hash?: string }
 export interface LogEntry { id: string; t: number; who: string; text: string }

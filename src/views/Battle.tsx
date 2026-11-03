@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
-import { FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { autoTurn, bGet, setStatus, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, sideOf, startBattle, toHit } from '../game/battle';
+import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
+import { autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
@@ -19,6 +19,36 @@ function onTurn(fn: (b: Battle, cur: OrderEntry, actor: Fighter, s: Shared) => v
     const actor = bGet(cur);
     if (actor) fn(b, cur, actor, s);
   }));
+}
+
+/** One-tap rival fights: the full graduation spar, or any of the Razorwind rivals. */
+function RivalBattle() {
+  const s = useGame(), rivals = CAST.filter(c => c.team === 'rivals');
+  const [pick, setPick] = useState<string[]>(rivals.map(r => r.id));
+  const go = (spar: boolean) => run(() => update(d => {
+    if (!d.chars.length) throw new Error('Add the team first.');
+    if (spar) { startRivalSpar(); return; }
+    if (!pick.length) throw new Error('Pick at least one rival.');
+    const party = d.chars.filter(c => c.player).length ? d.chars.filter(c => c.player) : d.chars;
+    startBattle(party.map(c => c.id), buildRivals(pick), null, 'normal', 'Team Razorwind wants a rematch!');
+    addLog(`A rival battle against ${rivals.filter(r => pick.includes(r.id)).map(r => r.name).join(', ')} begins!`);
+  }));
+  return (
+    <section className="card callout">
+      <h2>⚔️ Rival battle</h2>
+      <p className="small muted" style={{ marginTop: 0 }}>Team Razorwind fights at your players' levels, as strong as the Pokémon they chose, and they plan their moves. {s.world.sparDone ? '' : 'Start with the graduation spar.'}</p>
+      {!s.world.sparDone ? <button className="btn primary" onClick={() => go(true)}>Start the graduation spar</button> : <>
+        <div className="row" style={{ gap: 6, marginBottom: 8 }}>
+          {rivals.map(r => (
+            <label key={r.id} className="tp" style={{ color: 'var(--ink)', fontSize: 14 }}>
+              <input type="checkbox" checked={pick.includes(r.id)} onChange={ev => setPick(ev.target.checked ? [...pick, r.id] : pick.filter(x => x !== r.id))} /> {r.name} <span className="small muted">({r.species})</span>
+            </label>
+          ))}
+        </div>
+        <button className="btn primary" onClick={() => go(false)}>Start rival battle</button>
+      </>}
+    </section>
+  );
 }
 
 function Setup() {
@@ -39,6 +69,7 @@ function Setup() {
   });
   return (
     <>
+      <RivalBattle />
       <section className="card">
         <h2>1. Who's fighting?</h2>
         {s.chars.length ? s.chars.map(c => (
@@ -485,23 +516,24 @@ export default function BattleView() {
 
   const idx = b.order.map((o, k) => [o, k] as const);
   const upNext = b.result ? [] : idx.slice(b.turn + 1).concat(idx.slice(0, b.turn)).filter(([o]) => !isOut(bGet(o))).slice(0, 3).map(([o]) => nameOf(bGet(o)!));
-  const logShown = b.log.slice(0, 8);
+  const logShown = b.log.slice(0, dm ? 8 : 3);
   return (
     <>
       <Stage b={b} />
       <FieldCard b={b} />
       {panel}
-      <section className="card">
-        <div className="row between"><h2 style={{ margin: 0 }}>Foes</h2>{upNext.length ? <span className="small muted">Up next: {upNext.join(', ')}</span> : null}</div>
+      {/* The stage already shows everyone's HP, so players start with these folded to save scrolling. */}
+      <details className="card" open={dm}>
+        <summary>Foes{upNext.length ? <span className="small muted" style={{ fontWeight: 400 }}> · Up next: {upNext.join(', ')}</span> : null}</summary>
         {idx.filter(([o]) => sideOf(o) === 'enemy').map(([o, k]) => <Combatant key={o.id} b={b} o={o} k={k} />)}
-      </section>
-      <section className="card"><h2>Team</h2>{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => <Combatant key={o.id} b={b} o={o} k={k} />)}</section>
+      </details>
+      <details className="card" open={dm}><summary>Team</summary>{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => <Combatant key={o.id} b={b} o={o} k={k} />)}</details>
       <section className="card">
         <div className="row between"><h2 style={{ margin: 0 }}>Battle log</h2>{dm ? <button className="btn sm danger" onClick={end}>End battle</button> : null}</div>
         <div className="log" style={{ marginTop: 8 }}>{logShown.map((l, i) => <p key={i}>{l}</p>)}</div>
         {b.log.length > logShown.length ? (
           <details><summary className="small" style={{ cursor: 'pointer', fontWeight: 700, marginTop: 6 }}>Show all {b.log.length} lines</summary>
-            <div className="log">{b.log.slice(8).map((l, i) => <p key={i}>{l}</p>)}</div></details>
+            <div className="log">{b.log.slice(logShown.length).map((l, i) => <p key={i}>{l}</p>)}</div></details>
         ) : null}
       </section>
     </>

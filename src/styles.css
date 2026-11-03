@@ -311,3 +311,6 @@ fieldset[disabled] .filebtn{opacity:.45}
 /* PokéAPI pixel sprites: crisp pixels, scaled past their transparent margin; the team faces the foes */
 .avatar.pic img.px{image-rendering:pixelated;transform:scale(1.45)}
 .stage .side.team .avatar.pic img.px{transform:scale(-1.45,1.45)}
+
+/* World sub-tabs */
+.subtabs{margin-bottom:12px;gap:6px}

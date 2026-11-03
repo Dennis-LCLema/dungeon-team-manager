@@ -2,12 +2,12 @@
    The Labyrinth has 40 floors. Every 5 floors a Gatekeeper guards the way down, and beyond it a new overworld (a Layer)
    opens with Safe Zones, wild areas, two Red Rifts, a Waystone for teleporting, and the next descent. */
 import { clampN, roll, toID, uid } from '../lib/util';
-import { FLAVOR, ITEM_BY_ID, LAB_FLOORS, LAYERS, NODE_POS, RAR, RESCUES, THEME, TRAPS, labLvl, layerLvl } from './data';
+import { CAST, FLAVOR, ITEM_BY_ID, LAB_FLOORS, LAYERS, NODE_POS, RAR, RESCUES, THEME, TRAPS, labLvl, layerLvl } from './data';
 import { dex } from './dex';
 import { G, addLog, me } from './store';
 import type { AreaEv, Dungeon, Enemy, FloorMap } from './types';
 import { TIER, addLoot, blessTeam, levelCap, lootLine, lootTeam, pickItem, rollChest, rollRarity } from './rules';
-import { buildEnemy } from './battle';
+import { buildEnemy, buildRivals } from './battle';
 
 export const ek = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
 export const partyChars = () => { const p = G().chars.filter(c => c.inDungeon); return p.length ? p : G().chars.filter(c => c.player); };
@@ -240,7 +240,15 @@ export function exploreWild(k: number, node: WorldNode): AreaEv {
     return { kind: 'forage', roll: r, text: `The team searched the area and found ${def.n}.`, item: lootLine(def, node.n, `Foraging, ${RAR[def.r]}`) };
   }
   if (r <= 14) return { kind: 'merchant', roll: r, text: 'A wandering Kecleon sets up a stall on the path. Prices are a little high out here.', stock: rollHavenShop(k, null, 1.2).slice(0, 4) };
-  if (r <= 17) return { kind: 'rescue', roll: r, text: RESCUES[roll(RESCUES.length) - 1], xp: 20 * lvl, poke: 40 * lvl };
+  if (r <= 16 || (r <= 18 && !G().world.sparDone)) return { kind: 'rescue', roll: r, text: RESCUES[roll(RESCUES.length) - 1], xp: 20 * lvl, poke: 40 * lvl };
+  if (r <= 18) {
+    // After the graduation spar, Team Razorwind turns up on the road: one or two rivals looking for a rematch.
+    const rivals = CAST.filter(c => c.team === 'rivals').sort(() => Math.random() - 0.5).slice(0, roll(2));
+    const enemies = buildRivals(rivals.map(c => c.id));
+    enemies.forEach(e => { e.overworld = true; });
+    const names = rivals.map(c => c.name).join(' and ');
+    return { kind: 'battle', roll: r, text: `${names} of Team Razorwind block${rivals.length > 1 ? '' : 's'} the path. "Fancy seeing you out here, graduates. Round two?"`, enemies };
+  }
   return { kind: 'treasure', roll: r, text: 'A half-buried treasure chest glints in the dirt.' };
 }
 

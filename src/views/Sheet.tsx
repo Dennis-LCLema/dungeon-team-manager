@@ -75,7 +75,7 @@ function DexCard({ c }: { c: Char }) {
   const line = sp ? evoLine(id) : [];
   const megas = sp ? line.flatMap(st => (dex().mg?.[st.id] || []).map(m => m[0])) : [];
   return (
-    <details className="card dex" open>
+    <details className="card dex">
       <summary>Pokédex</summary>
       {inf ? <><div className="dexhead"><b>{inf[0] || ''}</b>{inf[2] ? ` · ${inf[2]} m` : ''}{inf[3] ? ` · ${inf[3]} kg` : ''}</div>{inf[1] ? <p className="dexentry">{inf[1]}</p> : null}</>
         : <p className="small muted">{sp ? 'Loading the Pokédex entry…' : 'Custom Pokémon. The DM writes its entry in Notes.'}</p>}
@@ -128,7 +128,7 @@ function MegaCard({ c }: { c: Char }) {
   </>;
   const f = forms[c.megaForm || 0];
   return (
-    <details className="card mega" open>
+    <details className="card mega" open={c.mega?.state === 'pending' || c.mega?.state === 'active'}>
       <summary>Mega Evolution</summary>
       {body}
       {f ? <div className="megaprev small">{fmtMega(f[0])}: {f[1].map(t => <TypeChip key={t} t={t} />)} · Ability <b>{f[3]}</b> · Base stats {f[2].reduce((a, b) => a + b, 0)} ({['HP', 'Atk', 'Def', 'SpA', 'SpD', 'Spe'].map((l, i) => `${l} ${f[2][i]}`).join(', ')})</div> : null}
@@ -184,8 +184,8 @@ function AbilityCard({ c }: { c: Char }) {
     toast('Sent to Dennis for approval.');
   };
   return (
-    <details className="card" open>
-      <summary>Ability</summary>
+    <details className="card" open={hb?.state === 'pending'}>
+      <summary>Ability: {on ? hb!.name : T(cur)}</summary>
       {on ? <div className="banner"><b>{hb!.name}</b> (homebrew, approved): {hb!.desc} <span className="muted">The DM applies its effect.</span></div> : null}
       <label>Preset ability{on ? ' (replaced by the homebrew one)' : ''}
         <select value={cur} disabled={!edit || c.inDungeon || on} onChange={e => withChar(c.id, x => { x.ability = e.target.value; addLog(`${nameOf(x)} now uses ${T(e.target.value)}.`); })}>
@@ -429,8 +429,8 @@ function SkillTree({ c }: { c: Char }) {
     }
   });
   return (
-    <details className="card" open>
-      <summary>Skill tree · {avail} point{avail === 1 ? '' : 's'} left</summary>
+    <details className="card">
+      <summary>Skill tree · {avail ? `✨ ${avail} point${avail === 1 ? '' : 's'} to spend` : 'no points left'}</summary>
       <div className="row between small muted" style={{ marginBottom: 8 }}>
         <span>1 point per level, +1 per Blessing. Unlock top to bottom. Tap the last one to refund it.</span>
         {dm ? <button className="btn sm" onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit text'}</button> : null}
@@ -619,12 +619,12 @@ export default function Sheet() {
           <p className="small" style={{ margin: '10px 0 0' }}><b>Mastery {rank}:</b> {MASTERY[rank]}{rank < 4 ? <> <span className="muted">Next rank at level {[5, 10, 15][rank - 1]}.</span></> : null}</p>
         </section>
 
-        <AbilityCard key={'ability:' + c.id + (c.homebrew?.state || '')} c={c} />
-        <DexCard c={c} />
-        <MegaCard key={'mega:' + c.id + (c.mega?.state || '')} c={c} />
         <Moves c={c} />
         <Bag c={c} others={s.chars.filter(x => x.id !== c.id)} />
+        <AbilityCard key={'ability:' + c.id + (c.homebrew?.state || '')} c={c} />
         <SkillTree c={c} />
+        <DexCard c={c} />
+        <MegaCard key={'mega:' + c.id + (c.mega?.state || '')} c={c} />
 
         <details className="card" open={dm}>
           <summary>Stats</summary>

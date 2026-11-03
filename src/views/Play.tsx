@@ -8,7 +8,6 @@ import type { Char } from '../game/types';
 import { T } from '../lib/util';
 import BattleView from './Battle';
 import DungeonView, { LockPanel } from './Dungeon';
-import WorldView from './World';
 
 function useNow() {
   const s = useGame(), b = s.game.battle, dg = s.dungeon, mine = s.chars.filter(owns);
@@ -66,7 +65,13 @@ export default function Play() {
   if (b) body = <><BattleView />{b.result && dg.state === 'in' ? <DungeonView /> : null}</>;
   else if (dg.state === 'prep') body = <><LockPanel dg={dg} />{mine.map(c => <MyCard key={c.id} c={c} />)}</>;
   else if (dg.state === 'in') body = <DungeonView />;
-  else body = <><WorldView />{mine.length ? mine.map(c => <MyCard key={c.id} c={c} />) : <section className="card"><p className="small muted" style={{ margin: 0 }}>Dennis hasn't given you a Pokémon yet.</p></section>}</>;
+  else body = <>
+    <section className="card row between">
+      <span>📍 The team is at <b>{nodeById(s.world.at)?.n || 'the Waystone'}</b>, {LAYERS[s.world.layer].n}.</span>
+      <button className="btn sm primary" onClick={() => setUi({ tab: 'world' })}>Vote where to go</button>
+    </section>
+    {mine.length ? mine.map(c => <MyCard key={c.id} c={c} />) : <section className="card"><p className="small muted" style={{ margin: 0 }}>Dennis hasn't given you a Pokémon yet.</p></section>}
+  </>;
   return (
     <>
       <section className={`card now now-${now.kind}`} role="status" aria-live="polite">

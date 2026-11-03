@@ -240,7 +240,7 @@ describe('shiny sprites', () => {
 describe('graduation spar', () => {
   it('matches each rival to the player line it chose, at that level, and attacks them first', async () => {
     const { startRivalSpar, autoTurn } = await import('./battle');
-    const riolu = createChar('Lucario', '', 'Juan', 6), aron = createChar('Aron', '', 'Christian', 3);
+    const riolu = createChar('Riolu', '', 'Juan', 6), aron = createChar('Aron', '', 'Christian', 3);
     update(s => { s.chars = [riolu, aron]; s.game.battle = null; startRivalSpar(); s.game.battle!.phase = 'fight'; });
     const b = G().game.battle!;
     const kip = b.enemies.find(e => e.name.startsWith('Kip'))!, pebble = b.enemies.find(e => e.name.startsWith('Pebble'))!;
@@ -248,8 +248,12 @@ describe('graduation spar', () => {
     expect([kip.focus, kip.level]).toEqual([riolu.id, 6]);
     expect([pebble.focus, pebble.level]).toEqual([aron.id, 3]);
     expect(b.enemies.find(e => e.name.startsWith('Zephyr'))!.focus).toBeUndefined();
-    update(s => { const bb = s.game.battle!; bb.turn = bb.order.findIndex(o => o.id === kip.id); autoTurn(); });
-    expect(G().game.battle!.last?.target).toBe('Lucario');
+    // With a move that hits Riolu normally, Kip goes after the rival it chose.
+    update(s => { const bb = s.game.battle!; bb.enemies.find(e => e.id === kip.id)!.moves = [{ name: 'slash', type: 'normal', cls: 'physical', dice: '2d8', ppMax: null, ppCur: 0 } as never]; bb.turn = bb.order.findIndex(o => o.id === kip.id); autoTurn(); });
+    expect(G().game.battle!.last?.target).toBe('Riolu');
+    // Evolved into Lucario (Steel), Kip's moves barely scratch it, so a smart rival picks another target.
+    update(s => { const c = s.chars.find(x => x.id === riolu.id)!; c.species = 'lucario'; c.types = ['fighting', 'steel']; const bb = s.game.battle!; bb.enemies.find(e => e.id === kip.id)!.moves.push({ name: 'assurance', type: 'dark', cls: 'physical', dice: '2d6', ppMax: null, ppCur: 0 } as never); bb.turn = bb.order.findIndex(o => o.id === kip.id); autoTurn(); });
+    expect(G().game.battle!.last?.target).not.toBe('Lucario');
   });
 });
 
@@ -306,5 +310,22 @@ describe('previously on', () => {
       { id: '5', t: now - 60 * h, who: '', text: 'Aron evolved into Lairon!' },
     ];
     expect(recapLines(log, now)).toEqual(['Quest complete: Find the lost Pichu.', 'Riolu reached level 3.']);
+  });
+});
+
+describe('rivals in the overworld', () => {
+  it('only show up after the graduation spar', async () => {
+    const { exploreWild, layerNodes } = await import('./explore');
+    const meadow = layerNodes(0).find(n => n.kind === 'wild')!;
+    update(s => { s.chars = [createChar('Riolu', '', 'Juan', 4)]; s.world.sparDone = false; });
+    vi.spyOn(Math, 'random').mockReturnValue(0.85); // d20 = 18
+    update(() => { expect(exploreWild(0, meadow).kind).toBe('rescue'); });
+    update(s => { s.world.sparDone = true; });
+    update(() => {
+      const ev = exploreWild(0, meadow);
+      expect(ev.kind).toBe('battle');
+      expect(ev.text).toMatch(/Team Razorwind/);
+      expect(ev.enemies!.every(e => e.rival && e.overworld && e.level === 4)).toBe(true);
+    });
   });
 });

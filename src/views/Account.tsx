@@ -2,27 +2,22 @@ import { useState } from 'react';
 import { run } from '../components/common';
 import { FIREBASE_CONFIG, gameCode, inviteLink } from '../game/firebase';
 import { InviteButton } from './Login';
-import { nameOf } from '../game/rules';
+import { nameOf, parseBackup } from '../game/rules';
 import { G, ask, blankShared, checkPw, exportFile, hashPw, isDM, me, remote, setUi, toast, update, useGame } from '../game/store';
-import type { Char } from '../game/types';
 import { uid } from '../lib/util';
 
 async function importJSON(text: string) {
-  let j: any;
-  try { j = JSON.parse(text); } catch { return toast('Import failed: the text is not valid JSON.', 'bad'); }
-  if (j?.kind === 'pmd-character' && j.char) {
-    const c: Char = { ...j.char, id: uid(), createdAt: Date.now() };
+  const r = parseBackup(text);
+  if (r.kind === 'error') return toast('Import failed: ' + r.msg, 'bad');
+  if (r.kind === 'char') {
+    const c = { ...r.char, id: uid(), createdAt: Date.now() };
     update(s => { s.chars.push(c); });
-    toast(`${nameOf(c)} joined the team.`);
-  } else if (j?.kind === 'pmd-team' && j.state) {
-    if (!(await ask('Replace the whole team with this backup?', 'Replace team'))) return;
-    update(s => {
-      s.chars = j.state.chars || [];
-      if (j.state.storage) s.storage = j.state.storage;
-      s.game = { battle: null, bsetup: j.state.bsetup || { pcs: [], enemies: [] } };
-    });
-    toast('Team restored.');
-  } else toast("Import failed: This isn't a Dungeon Team file.", 'bad');
+    return toast(`${nameOf(c)} joined the team.`);
+  }
+  const full = !!r.state.world;
+  if (!(await ask(full ? 'Replace the whole game (team, world, quests, log and logins) with this backup?' : 'Replace the team and storage with this older backup? World progress stays as it is.', 'Replace'))) return;
+  update(s => { Object.assign(s, r.state); });
+  toast(full ? 'Game restored.' : 'Team restored.');
 }
 
 const HOUSE_RULES = [
@@ -129,7 +124,7 @@ export default function Account() {
             <h2>Backup</h2>
             <p className="small muted" style={{ marginTop: 0 }}>{remote.live ? 'Everyone who opens this page shares one team.' : 'This team is saved in this browser only.'} Export a backup now and then.</p>
             <div className="row">
-              <button className="btn primary" onClick={() => run(() => exportFile('dungeon-team-backup.json', { kind: 'pmd-team', state: { chars: s.chars, storage: s.storage, bsetup: s.game.bsetup } }))}>Export whole team</button>
+              <button className="btn primary" onClick={() => run(() => exportFile(`dungeon-team-backup-${new Date().toISOString().slice(0, 10)}.json`, { kind: 'pmd-team', version: 3, state: { ...s, game: { battle: null, bsetup: s.game.bsetup } } }))}>Export whole game</button>
             </div>
             <h3>Import</h3>
             <label>From a file
@@ -143,7 +138,7 @@ export default function Account() {
             <div className="row" style={{ marginTop: 8 }}>
               <button className="btn" onClick={() => (paste.trim() ? run(() => importJSON(paste)) : toast('Paste a character or backup first.', 'bad'))}>Import pasted text</button>
             </div>
-            <p className="small muted">A full team backup replaces everything. A single character is added to the team.</p>
+            <p className="small muted">A whole-game backup replaces the team, world, quests, log and logins. A single Pokémon is added to the team.</p>
           </section>
           <section className="card">
             <h2>House rules used by this app</h2>

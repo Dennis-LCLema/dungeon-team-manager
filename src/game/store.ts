@@ -159,7 +159,10 @@ export function ask(msg: string, ok = 'Yes'): Promise<boolean> {
 export const remote = { live: false, readOnly: false };
 export function setRemote(p: Partial<typeof remote>) { Object.assign(remote, p); setUi({}); }
 
-/* ---------- Who is using the app ---------- */
+/* ---------- Who is using the app ----------
+   shortcut: roles and passwords are checked on each device, and the shared database trusts every member of a game,
+   so a player who edits browser storage could act as DM. Fine for a group of friends; switch to real sign-in
+   (Firebase Auth with per-role database rules) if the game is ever opened to strangers. */
 export const me = (): User | null => {
   const n = uiState.meName;
   return G().users.list.find(u => !!n && u.name.toLowerCase() === String(n).toLowerCase()) || null;

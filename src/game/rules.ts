@@ -4,7 +4,7 @@ import { T, roll, rollDice, slug, toID, uid, fmt, money } from '../lib/util';
 import { CHART, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, RAR, type ItemDef } from './data';
 import { LVL_RATIO, dex, dexReady, evoLine, getEvos, getMove, getPokemonAny, type MegaForm } from './dex';
 import { G, addLog, me, setUi, toast } from './store';
-import type { BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, StatKey, Tree } from './types';
+import type { BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
 import { BT, blog, knockout } from './battle';
 import { leaveDungeon, partyChars } from './explore';
 
@@ -611,3 +611,50 @@ export const healPrice = (layer: number, bond: number) => bond <= -2 ? null : bo
 export const bondOf = (bond: Record<string, number>, id: string) => Math.max(-2, Math.min(2, bond[id] || 0));
 /** Charisma haggle: % off a shop visit from the roll total (d20 + Charisma bonus + 2 per friendship step). */
 export const haggleOff = (total: number) => total >= 20 ? 30 : total >= 15 ? 20 : total >= 10 ? 10 : 0;
+
+/* ---------- Backups ---------- */
+const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+const arr = <V,>(v: unknown, keep: (x: any) => boolean = () => true): V[] => (Array.isArray(v) ? v.filter(keep) : []);
+
+/** Check a Pokémon from a file and fill in anything missing, so a damaged file can't break every player's screen. Null if it isn't a Pokémon. */
+export function cleanChar(raw: unknown): Char | null {
+  if (!isObj(raw) || typeof raw.species !== 'string' || !raw.species.trim()) return null;
+  const level = Math.max(1, Math.min(MAX_LEVEL, Math.round(Number(raw.level)) || 1));
+  const c = {
+    ...raw, id: typeof raw.id === 'string' && raw.id ? raw.id : uid(), species: raw.species.trim(), level,
+    nickname: String(raw.nickname || ''), player: String(raw.player || ''), form: String(raw.form || raw.species),
+    types: arr<string>(raw.types, x => typeof x === 'string'), abilities: arr<string>(raw.abilities, x => typeof x === 'string'),
+    levelMoves: arr(raw.levelMoves, isObj), moves: arr(raw.moves, m => isObj(m) && typeof m.name === 'string'),
+    equipped: arr<string>(raw.equipped, x => typeof x === 'string'), items: arr(raw.items, i => isObj(i) && typeof i.name === 'string' && Number(i.qty) > 0),
+    assists: arr(raw.assists, isObj), history: arr(raw.history, isObj), bonus: isObj(raw.bonus) ? raw.bonus : {},
+    base: isObj(raw.base) ? raw.base : { hp: 50, atk: 50, def: 50, spa: 50, spd: 50, spe: 50 },
+    evo: isObj(raw.evo) && Array.isArray(raw.evo.targets) ? raw.evo : { stage: 1, targets: [] },
+    heart: Number(raw.heart) || 10, notes: String(raw.notes || ''), img: typeof raw.img === 'string' ? raw.img : '',
+    inDungeon: false, xp: Math.max(0, Number(raw.xp) || 0), createdAt: Number(raw.createdAt) || Date.now(),
+  } as Char;
+  if (!c.types.length) c.types = ['normal'];
+  if (!isObj(c.tree)) c.tree = defaultTree(c);
+  c.equipped = c.equipped.filter(n => c.moves.some(m => m.name === n)).slice(0, 4);
+  c.hpCur = Math.max(0, Math.min(maxHP(c), Number(raw.hpCur) >= 0 ? Number(raw.hpCur) : maxHP(c)));
+  return c;
+}
+
+/** Read an exported file: one Pokémon, or a whole-game backup (older backups held only Pokémon and storage). */
+export function parseBackup(text: string): { kind: 'char'; char: Char } | { kind: 'team'; state: Partial<Shared> } | { kind: 'error'; msg: string } {
+  let j: any;
+  try { j = JSON.parse(text); } catch { return { kind: 'error', msg: 'the text is not valid JSON.' }; }
+  if (j?.kind === 'pmd-character') {
+    const char = cleanChar(j.char);
+    return char ? { kind: 'char', char } : { kind: 'error', msg: "that Pokémon is missing its species." };
+  }
+  if (j?.kind === 'pmd-team' && isObj(j.state)) {
+    const chars = arr(j.state.chars).map(cleanChar);
+    if (chars.some(c => !c)) return { kind: 'error', msg: 'a Pokémon in this backup is damaged.' };
+    const state: Partial<Shared> = { chars: chars as Char[] };
+    (['storage', 'world', 'dungeon', 'loot', 'rules', 'log', 'users'] as const).forEach(k => { if (isObj(j.state[k])) (state as any)[k] = j.state[k]; });
+    if (isObj(j.state.game)) state.game = { battle: null, bsetup: isObj(j.state.game.bsetup) ? j.state.game.bsetup : { pcs: [], enemies: [] } };
+    else if (isObj(j.state.bsetup)) state.game = { battle: null, bsetup: j.state.bsetup };
+    return { kind: 'team', state };
+  }
+  return { kind: 'error', msg: "this isn't a Dungeon Team file." };
+}

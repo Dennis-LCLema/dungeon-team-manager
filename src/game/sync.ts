@@ -1,7 +1,7 @@
 /* Shared team sync through the Claude artifact database, or through Firebase outside Claude (see firebase.ts).
    With neither, the team stays saved on each device. Document paths and shapes match
    the original app, so an existing shared team keeps working. */
-import { G, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast } from './store';
+import { G, getUi, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast } from './store';
 import type { Char, LogEntry, Shared, SharedDocKey } from './types';
 import { FIREBASE_CONFIG, firebaseDb, gameCode } from './firebase';
 
@@ -66,6 +66,13 @@ function mergeLog(a: Shared['log'], b: Shared['log']) {
   return { entries: Object.values(seen).sort((x, y) => y.t - x.t).slice(0, 80) };
 }
 
+/** Two phones changed the World at once: take theirs, then put my own vote back (each player only ever changes their own). */
+export function mergeWorld(mine: Shared['world'], theirs: Shared['world'], myName: string | null): Shared['world'] {
+  const votes = { ...theirs.votes };
+  if (myName) { if (mine.votes?.[myName]) votes[myName] = mine.votes[myName]; else delete votes[myName]; }
+  return { ...theirs, votes };
+}
+
 function watchDoc(k: SharedDocKey, path: string) {
   db.doc(path).onSnapshot((snap: any) => {
     const first = !ready[k];
@@ -76,6 +83,8 @@ function watchDoc(k: SharedDocKey, path: string) {
     known[k] = stable(d);
     if (!dirty) replaceFromRemote({ ...s, [k]: d });
     else if (k === 'log') replaceFromRemote({ ...s, log: mergeLog(s.log, d) });
+    else if (k === 'world') { replaceFromRemote({ ...s, world: mergeWorld(s.world, d, getUi().meName) }); scheduleFlush(); }
+    // shortcut: other documents are last-writer-wins; fine while one person acts at a time (turns, DM-only screens).
     else scheduleFlush();
   }, () => {});
 }

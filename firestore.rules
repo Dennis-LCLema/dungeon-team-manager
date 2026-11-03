@@ -1,6 +1,7 @@
 rules_version = '2';
 // Paste into Firebase console → Firestore Database → Rules, then Publish.
 // Anyone signed in (the app signs in anonymously) can use a game, but only by knowing its game code.
+// shortcut: everyone in a game can change everything in it (no DM-only rules); fine among friends. Back up with Admin → Export whole game.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /games/{code}/{document=**} {

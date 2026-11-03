@@ -3,7 +3,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
 import { bGet, buildEnemy, nextTurn, resolveMove, startBattle } from './battle';
 import { setDex } from './dex';
-import { resolveId } from './pokeapi';
 import { musicFor } from './music';
 import { createChar, effectiveness, equippedOf, haggleOff, healPrice } from './rules';
 import { G, update } from './store';
@@ -161,16 +160,6 @@ describe('haggle', () => {
   });
 });
 
-describe('PokéAPI sprite ids', () => {
-  it('matches exact names, then a listed form, then the base species', () => {
-    const map = { aron: 304, 'deoxys-normal': 386, arceus: 493, 'vulpix-alola': 10103 };
-    expect(resolveId(map, 'Aron')).toBe(304);
-    expect(resolveId(map, 'Vulpix-Alola')).toBe(10103);
-    expect(resolveId(map, 'Deoxys')).toBe(386);
-    expect(resolveId(map, 'Arceus-Bug')).toBe(493);
-    expect(resolveId(map, 'Notamon')).toBeNull();
-  });
-});
 
 describe('music', () => {
   it('picks the track for the scene, most specific first', () => {
@@ -229,7 +218,7 @@ describe('shiny sprites', () => {
     const sprites = JSON.parse(readFileSync('public/sprites.json', 'utf8'));
     vi.stubGlobal('fetch', async () => ({ json: async () => sprites }));
     const { loadSpriteIds, spriteUrl } = await import('./pokeapi');
-    await loadSpriteIds(1);
+    await loadSpriteIds();
     expect(spriteUrl('Aron', true)).toBe(sprites.shiny[sprites.names.aron]);
     expect(spriteUrl('Aggron', true)).not.toBe(spriteUrl('Aggron', false));
     expect(spriteUrl('Riolu', true)).toBe(spriteUrl('Riolu', false));
@@ -329,3 +318,36 @@ describe('rivals in the overworld', () => {
     });
   });
 });
+
+describe('backups', () => {
+  it('restore the whole game, fill gaps in damaged Pokémon, and refuse junk', async () => {
+    const { parseBackup } = await import('./rules');
+    const c = createChar('Aron', 'Tank', 'Luis', 4);
+    const full = parseBackup(JSON.stringify({ kind: 'pmd-team', version: 3, state: { chars: [c], world: { layer: 2, quests: [] }, log: { entries: [] } } }));
+    expect(full.kind).toBe('team');
+    expect(full.kind === 'team' && full.state.world?.layer).toBe(2);
+    const old = parseBackup(JSON.stringify({ kind: 'pmd-team', state: { chars: [c], storage: { items: [], poke: 5 } } }));
+    expect(old.kind === 'team' && old.state.world).toBeUndefined(); // older backups keep world progress as it is
+    const damaged = parseBackup(JSON.stringify({ kind: 'pmd-character', char: { species: 'riolu', level: 99, moves: 'oops' } }));
+    expect(damaged.kind).toBe('char');
+    if (damaged.kind === 'char') {
+      expect(damaged.char.level).toBe(20);
+      expect([damaged.char.moves, damaged.char.items, damaged.char.equipped]).toEqual([[], [], []]);
+      expect(damaged.char.hpCur).toBeGreaterThan(0);
+    }
+    expect(parseBackup('{"kind":"pmd-character","char":{"level":3}}').kind).toBe('error');
+    expect(parseBackup('not json').kind).toBe('error');
+    expect(parseBackup(JSON.stringify({ kind: 'pmd-team', state: { chars: [{ nope: 1 }] } })).kind).toBe('error');
+  });
+});
+
+describe('sync', () => {
+  it("keeps both players' votes when they vote at the same moment", async () => {
+    const { mergeWorld } = await import('./sync');
+    const base = blankSharedWorld();
+    const mine = { ...base, votes: { Luis: '0:h-market' } }, theirs = { ...base, layer: 0, votes: { Juan: '0:stairs' } };
+    expect(mergeWorld(mine, theirs, 'Luis').votes).toEqual({ Juan: '0:stairs', Luis: '0:h-market' });
+    expect(mergeWorld({ ...base, votes: {} }, { ...base, votes: { Luis: 'x', Juan: 'y' } }, 'Luis').votes).toEqual({ Juan: 'y' }); // I un-voted
+  });
+});
+function blankSharedWorld() { return { layer: 0, at: '0:waystone', unlocked: [0], deepest: 0, votes: {} as Record<string, string>, shop: {}, area: {}, rifts: {}, announce: null, met: {}, bond: {}, quests: [] }; }

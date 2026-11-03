@@ -145,7 +145,9 @@ export default function App() {
   const who = me();
 
   useEffect(() => {
-    Promise.all([loadDex(), loadSpriteIds()]).then(() => setDexState('ready'), (e: Error) => setDexState(e.message));
+    loadDex().then(() => setDexState('ready'), (e: Error) => setDexState(e.message));
+    // Sprites are 1 MB+: show the app first and let them pop in when they arrive.
+    void loadSpriteIds().then(() => setUi({}));
     void initSync();
   }, []);
 

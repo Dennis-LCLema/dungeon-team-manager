@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
-import { FIELD_KINDS, FIELD_PRESETS, SURPRISE, TCOL } from '../game/data';
-import { autoTurn, bGet, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, sideOf, startBattle, toHit } from '../game/battle';
+import { FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
+import { autoTurn, bGet, setStatus, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
-import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared } from '../game/types';
+import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared, Status } from '../game/types';
 import { T, fmt, roll, uid } from '../lib/util';
 
 /** Run a turn action for whoever is acting now, inside update(). */
@@ -385,6 +385,20 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
         </div>
       ) : null}
       {status ? <div className="small" style={{ marginTop: 4, fontWeight: 700 }}>{status}</div> : null}
+      {!isOut(x) && (x.status || (dm && !b.result)) ? (
+        <div className="row small" style={{ marginTop: 6, gap: 6 }}>
+          {x.status ? <span className="tag" title={STATUS[x.status].d}>{STATUS[x.status].g} {STATUS[x.status].n}</span> : null}
+          {dm && !b.result ? (
+            <select aria-label={`Status for ${nameOf(x)}`} style={{ width: 'auto' }} value={x.status || ''} onChange={ev => {
+              const st = (ev.target.value || null) as Status | null;
+              run(() => update(s => { const xx = bGet(s.game.battle!.order[k]); if (!xx) return; const msg = setStatus(xx, st); blog(msg); toast(msg, xx.status === st ? undefined : 'bad'); }));
+            }}>
+              <option value="">No status</option>
+              {Object.entries(STATUS).map(([key, v]) => <option key={key} value={key}>{v.g} {v.n}</option>)}
+            </select>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -400,7 +414,7 @@ function Stage({ b }: { b: Battle }) {
     return (
       <div key={o.id + (anim ? last!.id : '')} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
         <Avatar c={x} size={60} />
-        <span>{n}</span>
+        <span>{x.status ? STATUS[x.status].g + ' ' : ''}{n}</span>
         <HpBar cur={x.hpCur} max={hpMaxOf(x)} />
       </div>
     );
@@ -457,7 +471,7 @@ export default function BattleView() {
   } else if (isOut(actor)) {
     panel = (
       <div className="card"><b>{actor ? nameOf(actor) : '?'}</b> can't act.
-        {controls(cur) || dm ? <div style={{ marginTop: 8 }}><button className="btn primary" onClick={() => update(nextTurn)}>Next turn</button></div> : null}
+        {controls(cur) || dm ? <div style={{ marginTop: 8 }}><button className="btn primary" onClick={() => update(() => nextTurn())}>Next turn</button></div> : null}
       </div>
     );
   } else if (!controls(cur)) {

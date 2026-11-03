@@ -73,8 +73,8 @@ export const abilityOf = (x: Fighter | Mon) => {
   const c = x as Char;
   return c.homebrew?.state === 'approved' ? 'homebrew' : c.ability || c.abilities?.[0] || '';
 };
-export const AC = (c: Mon) => 11 + M(c, 'def') + (abilityOf(c) === 'heavy-metal' ? 2 : 0);
-export const SAC = (c: Mon) => 11 + M(c, 'spd');
+export const AC = (c: Mon) => 11 + M(c, 'def') + (abilityOf(c) === 'heavy-metal' ? 2 : 0) + (armorFx(c).guard || 0);
+export const SAC = (c: Mon) => 11 + M(c, 'spd') + (armorFx(c).spguard || 0);
 export const typesOf = (c: Fighter | Mon) => {
   const m = megaOf(c as Fighter);
   return [...new Set([...(m ? m[1] : c.types || []), c.awakenedType].filter(Boolean) as string[])];
@@ -268,6 +268,7 @@ export function longRest(c: Char) {
   c.moves.forEach(m => { if (m.ppMax != null) m.ppCur = m.ppMax; });
   c.assists.forEach(a => { a.used = false; });
   c.sashUsed = false;
+  c.status = null;
   if (heldFx(c).friend) {
     c.friend = (c.friend || 0) + 1;
     if (c.friend === 3 && (c.evo.targets || []).some(t => /friendship/i.test(t.how))) addLog(`${nameOf(c)} trusts the team completely. It can evolve by friendship now!`);
@@ -285,7 +286,7 @@ export function rollMoveOutside(c: Char, mv: Move) {
   if (mv.cls === 'status' || !mv.dice) {
     text = `${who} used ${T(mv.name)}. Save DC ${8 + prof(c.level) + M(c, 'spa')}.`;
   } else {
-    const key = mv.cls === 'physical' ? 'atk' : 'spa', bonus = prof(c.level) + M(c, key), d20 = roll(20), crit = d20 >= critOn(c);
+    const key = mv.cls === 'physical' ? 'atk' : 'spa', bonus = prof(c.level) + M(c, key) + weaponHit(c, mv), d20 = roll(20), crit = d20 >= critOn(c);
     const stab = typesOf(c).includes(mv.type);
     const dmg = Math.max(1, rollDice(mv.dice, crit) + M(c, key) + (stab ? prof(c.level) : 0) + heldDmg(c, mv));
     text = `${who} used ${T(mv.name)}: ${d20 + bonus} to hit (rolled ${d20}${fmt(bonus)})${crit ? ', critical hit' : ''}, ${dmg} ${mv.type} damage.`;
@@ -329,7 +330,16 @@ export function takeOne(arr: BagItem[], name: string) {
 }
 export const heldFx = (x: Mon | null | undefined) => (x && x.held ? defOf(x.held)?.fx || {} : {});
 export const critOn = (x: Mon) => heldFx(x).crit || 20;
-export const heldDmg = (x: Mon, mv: Move) => { const f = heldFx(x); return (f.typeDmg && f.typeDmg === mv.type ? 2 : 0) + (f.lifeOrb ? roll(6) : 0); };
+export const armorFx = (x: Mon | null | undefined) => (x && x.armor ? defOf(x.armor)?.fx || {} : {});
+/** The weapon's effect, if it works with this move's class. */
+const weaponFor = (x: Mon, mv: Move) => { const f = x.weapon ? defOf(x.weapon)?.fx || {} : {}; return !f.wCls || f.wCls === mv.cls ? f : {}; };
+export const weaponHit = (x: Mon, mv: Move) => weaponFor(x, mv).wHit || 0;
+export const heldDmg = (x: Mon, mv: Move) => {
+  const f = heldFx(x), w = weaponFor(x, mv);
+  return (f.typeDmg && f.typeDmg === mv.type ? 2 : 0) + (f.lifeOrb ? roll(6) : 0) + (w.wDmg || 0) + (w.wDie ? rollDice(w.wDie) : 0);
+};
+/** Which slot an item goes in when equipped, or null if it is used up instead. */
+export const slotOf = (def: { cat: string } | null | undefined) => (def && ['held', 'weapon', 'armor'].includes(def.cat) ? def.cat as 'held' | 'weapon' | 'armor' : null);
 
 export function tryReviver(t: Fighter) {
   const items = t.items || [];
@@ -353,7 +363,7 @@ export function evoTargetFor(c: Char, def: ItemDef) {
 export const lootTeam = () => { const p = G().chars.filter(c => c.player); return p.length ? p : G().chars; };
 export const avgLevel = () => { const p = lootTeam(); return p.length ? Math.max(1, Math.round(p.reduce((s, c) => s + c.level, 0) / p.length)) : 1; };
 export const usableBag = (c: Char) =>
-  (c.items || []).map((it, i) => [it, i] as const).filter(([it]) => { const d0 = defOf(it); return !d0 || (d0.cat !== 'held' && !d0.fx.autoRevive && !d0.fx.keep); });
+  (c.items || []).map((it, i) => [it, i] as const).filter(([it]) => { const d0 = defOf(it); return !d0 || (!slotOf(d0) && !d0.fx.autoRevive && !d0.fx.keep); });
 
 // Who should get this item? Returns { to: character id or 'storage', why }.
 export function suggestFor(def: ItemDef): { to: string; why: string } {
@@ -391,6 +401,11 @@ export function suggestFor(def: ItemDef): { to: string; why: string } {
     const label = ({ atk: 'Attack', spa: 'Sp. Atk', def: 'Defense', spd: 'Sp. Def', spe: 'Speed', heart: 'Heart', hp: 'HP' } as const)[k];
     return best(c => score(c, k) - (c.held ? 3 : 0), c => `Highest ${label} on the team${c.held ? '' : ", and it isn't holding anything"}`);
   }
+  if (def.cat === 'weapon') {
+    const k = fx.wCls === 'special' ? 'spa' : fx.wCls === 'physical' ? 'atk' : null;
+    return best(c => (k ? score(c, k) : Math.max(score(c, 'atk'), score(c, 'spa'))) - (c.weapon ? 4 : 0), c => `${fx.wCls ? 'Best ' + (k === 'spa' ? 'Sp. Atk' : 'Attack') : 'Hardest hitter'} on the team${c.weapon ? '' : ', with no weapon yet'}`);
+  }
+  if (def.cat === 'armor') return best(c => -AC(c) - SAC(c) - (c.armor ? 4 : 0), c => `Easiest to hit on the team${c.armor ? '' : ', with no armor yet'}`);
   if (fx.crit || fx.lifeOrb) return best(c => Math.max(score(c, 'atk'), score(c, 'spa')) - (c.held ? 3 : 0), 'Hardest hitter on the team');
   if (fx.init) return best(c => -score(c, 'spe') - (c.held ? 3 : 0), 'Slowest on the team, so it helps it act sooner');
   if (fx.autoRevive) return best(c => -maxHP(c) - countItem(c, def) * 20, 'Lowest max HP, so it needs the safety net most');
@@ -477,7 +492,7 @@ export function applyItem(user: Char, idx: number, target0: Fighter | null, inBa
   let target: Fighter = target0 || user;
   const ally = target.kind !== 'enemy' || target.side === 'npc', tn = nameOf(target);
   const take = () => takeOne(user.items, it.name);
-  if (def.cat === 'held') return { ok: false, msg: `${def.n} works when held. Tap Hold in the bag.` };
+  if (slotOf(def)) return { ok: false, msg: `${def.n} works when equipped. Tap ${def.cat === 'held' ? 'Hold' : 'Equip'} in the bag.` };
   if (fx.autoRevive) return { ok: false, msg: 'A Reviver Seed works on its own when you faint. Keep it in your bag.' };
   if (fx.heart || fx.purify) {
     if (!inBattle) return { ok: false, msg: `Use ${def.n} during a battle with a Shadow Pokémon.` };
@@ -528,7 +543,10 @@ export function applyItem(user: Char, idx: number, target0: Fighter | null, inBa
       msg += ` Healed ${target.hpCur - before} HP (${target.hpCur}/${hpMaxOf(target)}).`;
     }
     if (fx.teamHeal) { partyChars().forEach(x => { if (x.hpCur > 0) x.hpCur = Math.min(maxHP(x), x.hpCur + rollDice(fx.teamHeal)); }); msg += ' The whole team healed a little.'; }
-    if (fx.cure) msg += fx.cure === 'all' ? ' Every status is cured.' : ` ${T(fx.cure)} is cured.`;
+    if (fx.cure) {
+      if (fx.cure === 'all' || fx.cure === target.status) target.status = null;
+      msg += fx.cure === 'all' ? ' Every status is cured.' : ` ${T(fx.cure)} is cured.`;
+    }
     if (fx.pp && target.moves) {
       const lim = (target.kind === 'enemy' ? target.moves : equippedOf(target)).filter(m => m.ppMax != null);
       if (fx.pp === 'all') { lim.forEach(m => { m.ppCur = m.ppMax!; }); msg += ' All PP restored.'; }

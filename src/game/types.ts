@@ -16,10 +16,11 @@ export type Tree = Record<Branch, { label: string; nodes: TreeNode[] }>;
 export interface Assist { name: string; move: string; note: string; used: boolean }
 
 /** Fields shared by heroes and enemies, so rules functions can take either. */
+export type Status = 'burn' | 'poison' | 'paralysis' | 'sleep' | 'freeze' | 'confusion';
 export interface Mon {
   id: string; species: string; types: string[]; awakenedType?: string; base: Stats; level: number;
   bonus: Partial<Record<StatKey | 'heart', number>>; heart: number; moves: Move[]; hpCur: number;
-  held?: Held | null; megaOn?: number | null; shiny?: boolean; img?: string; nickname?: string;
+  status?: Status | null; held?: Held | null; weapon?: Held | null; armor?: Held | null; megaOn?: number | null; shiny?: boolean; img?: string; nickname?: string;
   kind?: 'enemy'; sashUsed?: boolean; items?: BagItem[];
 }
 export interface Char extends Mon {
@@ -38,6 +39,8 @@ export interface Char extends Mon {
 export interface Enemy extends Mon {
   kind: 'enemy'; side: 'enemy' | 'npc'; name: string; shadow: boolean; heartGauge: number; hpMax: number;
   boss?: boolean; gatekeeper?: boolean; rift?: boolean; minion?: boolean; outReason?: string; killer?: string; overworld?: boolean;
+  /** Id of the team member this foe goes after first (a rival). */
+  focus?: string;
 }
 export type Fighter = Char | Enemy;
 
@@ -84,7 +87,7 @@ export interface AreaEv {
   item?: LootLine; stock?: LootLine[]; xp?: number; poke?: number; done?: boolean;
 }
 export interface Announce { id: string; title: string; sub: string; tone: string }
-export interface Quest { id: string; title: string; giver: string; xp: number; poke: number; done?: boolean }
+export interface Quest { id: string; title: string; giver: string; xp: number; poke: number; item?: string; qty?: number; done?: boolean }
 export interface World {
   layer: number; at: string; unlocked: number[]; deepest: number; votes: Record<string, string>;
   shop: Record<string, { stock: LootLine[]; off?: number }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean;

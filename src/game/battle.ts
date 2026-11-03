@@ -1,12 +1,12 @@
 /* Battle engine. State-changing functions run inside update(). */
 import { T, fmt, roll, rollDice, uid } from '../lib/util';
-import { LAYERS, SURPRISE } from './data';
-import { getMove, getPokemonAny } from './dex';
+import { CAST, LAYERS, STATUS, SURPRISE } from './data';
+import { getMove, getPokemonAny, prevoOf } from './dex';
 import { G, addLog, canEdit, isDM, owns } from './store';
-import type { AttackResult, Battle, Char, Enemy, Fighter, Move, OrderEntry, Shared } from './types';
+import type { AttackResult, Battle, Char, Enemy, Fighter, Move, OrderEntry, Shared, Status } from './types';
 import {
   AC, M, SAC, SHADOW_RUSH, abilityOf, XP_FINISH, addLoot, clampHP, critOn, customMove, diff, effectiveness, enemyXP, gameLvl, heldDmg, heldFx,
-  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rollChest, rollDrop, toTableMove, typesOf, tryReviver,
+  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rollChest, rollDrop, toTableMove, typesOf, tryReviver, weaponHit,
 } from './rules';
 
 export const BT = () => G().game.battle;
@@ -100,7 +100,7 @@ export function checkEnd() {
   const foes = b.order.some(o => sideOf(o) === 'enemy' && !isOut(bGet(o)));
   if (!foes) { b.result = 'win'; blog('All enemies are down. Victory!'); addLog('The team won a battle!'); onBattleWon(b); }
   else if (!team) { b.result = 'lose'; blog('Every team member has fainted.'); addLog('The team fainted in battle.'); }
-  if (b.result) G().chars.forEach(x => { if (x.megaOn != null) { x.megaOn = null; clampHP(x); } });
+  if (b.result) G().chars.forEach(x => { x.status = null; if (x.megaOn != null) { x.megaOn = null; clampHP(x); } });
 }
 
 function onBattleWon(b: Battle) {
@@ -137,7 +137,7 @@ function onBattleWon(b: Battle) {
   addLoot(lines);
 }
 
-export function nextTurn() {
+export function nextTurn(depth = 0) {
   const b = BT();
   if (!b || b.result) return;
   for (let i = 0; i < b.order.length; i++) {
@@ -154,6 +154,38 @@ export function nextTurn() {
     x.hpCur = Math.min(hpMaxOf(x), x.hpCur + f.regen);
     blog(`${nameOf(x)} restored a little HP with its Leftovers.`);
   }
+  // A status can cost this fighter its turn; move on, but never loop forever.
+  if (x && !isOut(x) && statusTick(x)) { checkEnd(); if (depth < b.order.length * 2) nextTurn(depth + 1); }
+}
+
+/** Give a fighter a status (or clear it with null). Returns a message, or why it didn't stick. */
+export function setStatus(x: Fighter, st: Status | null): string {
+  if (!st) { x.status = null; return `${nameOf(x)} is no longer affected.`; }
+  const t = typesOf(x).find(ty => STATUS[st].immune.includes(ty));
+  if (t) return `${nameOf(x)} is ${T(t)} type, so it can't be ${STATUS[st].n.toLowerCase()}.`;
+  x.status = st;
+  return `${nameOf(x)} is ${STATUS[st].n.toLowerCase()}! ${STATUS[st].g}`;
+}
+
+/** Start-of-turn status effects. Returns true if the fighter loses this turn. */
+export function statusTick(x: Fighter): boolean {
+  const st = x.status, n = nameOf(x), max = hpMaxOf(x);
+  if (!st) return false;
+  const hurt = (dmg: number, why: string) => { x.hpCur = Math.max(0, x.hpCur - dmg); blog(`${n} ${why} (−${dmg} HP).`); if (x.hpCur <= 0) knockout(x, null); return x.hpCur <= 0; };
+  switch (st) {
+    case 'burn': return hurt(Math.max(roll(4), Math.floor(max / 16)), 'is hurt by its burn');
+    case 'poison': return hurt(Math.max(roll(6), Math.floor(max / 10)), 'is hurt by poison');
+    case 'paralysis': if (roll(4) === 1) { blog(`${n} is paralyzed! It can't move.`); return true; } return false;
+    case 'sleep': { const r = roll(20); if (r >= 11) { x.status = null; blog(`${n} woke up! (d20 ${r})`); return false; } blog(`${n} is fast asleep. (d20 ${r})`); return true; }
+    case 'freeze': { const r = roll(20); if (r >= 16) { x.status = null; blog(`${n} thawed out! (d20 ${r})`); return false; } blog(`${n} is frozen solid. (d20 ${r})`); return true; }
+    case 'confusion': {
+      const r = roll(20);
+      if (r >= 15) { x.status = null; blog(`${n} snapped out of its confusion! (d20 ${r})`); return false; }
+      if (roll(3) === 1) { hurt(roll(6), 'hurt itself in its confusion'); return true; }
+      return false;
+    }
+  }
+  return false;
 }
 
 export function handleKO(target: Fighter, actor: Fighter | null) {
@@ -201,7 +233,7 @@ const onTeam = (x: Fighter) => !(x.kind === 'enemy' && x.side !== 'npc');
 
 export function toHit(actor: Fighter, mv: Move, target: Fighter) {
   const ab = abilityOf(actor), f = BT()?.flags?.[actor.id] || {};
-  let bonus = prof(actor.level) + M(actor, mv.cls === 'physical' ? 'atk' : 'spa') + fieldFor(BT(), onTeam(actor)).hit;
+  let bonus = prof(actor.level) + M(actor, mv.cls === 'physical' ? 'atk' : 'spa') + fieldFor(BT(), onTeam(actor)).hit + weaponHit(actor, mv);
   if (ab === 'unburden' && !actor.held) bonus += 1;
   if (ab === 'steadfast' && f.steady) bonus += 2;
   if (ab === 'infiltrator' && target.hpCur >= hpMaxOf(target)) bonus += 2;
@@ -256,6 +288,7 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
     else if (heldFx(target).sash && !target.sashUsed && target.hpCur >= hpMaxOf(target)) { dmg = target.hpCur - 1; target.sashUsed = true; extra += ` ${tn} hung on with its Focus Sash!`; }
   }
   target.hpCur = Math.max(0, target.hpCur - dmg);
+  if (dmg > 0 && mv.type === 'fire' && target.status === 'freeze') { target.status = null; extra += ` ${tn} thawed out!`; }
   if (dmg > 0 && tab === 'steadfast') flag(target.id).steady = true;
   if (heldFx(actor).lifeOrb && dmg > 0 && ab !== 'rock-head') { const rc = roll(4); actor.hpCur = Math.max(0, actor.hpCur - rc); extra += ` ${who} took ${rc} Life Orb recoil.`; }
   if (tab === 'flame-body' && mv.cls === 'physical' && dmg > 0) { const fb = roll(4); actor.hpCur = Math.max(0, actor.hpCur - fb); extra += ` ${tn}'s Flame Body burns ${who} for ${fb}.`; }
@@ -279,7 +312,8 @@ export function autoTurn() {
   if (!actor || isOut(actor)) { nextTurn(); return; }
   const side = sideOf(cur), targets = b.order.filter(o => sideOf(o) !== side && !isOut(bGet(o))).map(o => bGet(o)!) as Fighter[];
   if (!targets.length) { checkEnd(); return; }
-  const t = targets[roll(targets.length) - 1];
+  const focus = actor.kind === 'enemy' && actor.focus ? targets.find(x => x.id === actor.focus) : undefined;
+  const t = focus || targets[roll(targets.length) - 1];
   const usable = actor.moves.filter(m => m.dice && (m.ppMax == null || m.ppCur > 0));
   const pool = usable.length ? usable : actor.moves.filter(m => m.ppMax == null || m.ppCur > 0);
   if (!pool.length) { blog(`${nameOf(actor)} has no moves left and waits.`); nextTurn(); return; }
@@ -287,4 +321,24 @@ export function autoTurn() {
   resolveMove(actor, roll(3) < 3 ? best : pool[roll(pool.length) - 1], t);
   checkEnd();
   nextTurn();
+}
+
+/** First form of a Pokémon's evolution line, e.g. Lucario → riolu. */
+const lineRoot = (species: string) => { let r = species.toLowerCase().replace(/[^a-z0-9]/g, ''); for (let i = 0; i < 4 && prevoOf(r); i++) r = prevoOf(r)!; return r; };
+
+/** Chapter 1's graduation spar: Team Razorwind at the players' levels, each rival going after the player it chose. */
+export function startRivalSpar() {
+  const s = G(), party = s.chars.filter(c => c.player).length ? s.chars.filter(c => c.player) : s.chars;
+  if (!party.length) throw new Error('Add the team first.');
+  const avg = Math.max(1, Math.round(party.reduce((t, c) => t + c.level, 0) / party.length));
+  const enemies = CAST.filter(c => c.team === 'rivals').map(r => {
+    const mark = party.find(c => lineRoot(c.species) === r.rivalOf);
+    const e = buildEnemy(r.species, mark?.level ?? avg, false, 'enemy');
+    e.name = `${r.name} (${T(r.species)})`;
+    if (mark) e.focus = mark.id;
+    s.world.met[r.id] = true;
+    return e;
+  });
+  startBattle(party.map(c => c.id), enemies, null, 'normal', 'The graduation spar! Team Razorwind steps into the ring, and each rival has already picked a target.');
+  addLog('The graduation spar against Team Razorwind begins!');
 }

@@ -266,7 +266,7 @@ fieldset[disabled] .filebtn{opacity:.45}
 .sys-top{font:700 13px var(--f-mono);letter-spacing:.3em;opacity:.8}
 .sys-title{font:700 clamp(22px,6vw,32px)/1.15 var(--f-display);margin:12px 0 10px;letter-spacing:.02em;text-shadow:0 0 18px currentColor}
 .tone-red .sys-title{color:#ffb3bd}.tone-gold .sys-title{color:#ffe2a3}
-.sys-sub{font-size:15px;line-height:1.55;opacity:.92;margin-bottom:18px}
+.sys-sub{font-size:15px;line-height:1.55;opacity:.92;margin-bottom:18px;white-space:pre-line}
 @keyframes sysin{from{opacity:0;transform:scale(.94);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
 .bar.xp.capped>i{background:var(--gold)}
 

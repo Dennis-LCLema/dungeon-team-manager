@@ -3,9 +3,9 @@ import { Avatar, TypeChip, Types, run } from '../components/common';
 import { mapDecor } from '../components/mapDecor';
 import { SellList, ShopList, buy } from '../components/Shop';
 import { CAST, ITEM_BY_ID, KIND, STARTER_QUESTS, TEAMS, type CastMember, LAB_FLOORS, LAYERS, TCOL, labLvl, layerLvl, ringOf } from '../game/data';
-import { rollSurprise, startBattle } from '../game/battle';
+import { rollSurprise, startBattle, startRivalSpar } from '../game/battle';
 import { arriveLayer, exploreWild, layerClosed, layerNodes, nodeById, prepRun, rollHavenShop, type WorldNode } from '../game/explore';
-import { addItemTo, addLoot, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
+import { addItemTo, addLoot, defByName, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
 import { G, addLog, isDM, me, setUi, toast, update, useGame } from '../game/store';
 import type { Enemy, Fighter } from '../game/types';
 import { getPokemonAny } from '../game/dex';
@@ -266,6 +266,7 @@ function TeamsCard({ k }: { k: number }) {
           <div key={t}>
             <h3 style={{ marginBottom: 2 }}>{v.n}</h3>
             <p className="small muted" style={{ marginTop: 0 }}>{v.d}</p>
+            {dm && t === 'rivals' ? <button className="btn primary" style={{ marginBottom: 8 }} onClick={() => run(() => { update(() => { if (G().game.battle && !G().game.battle!.result) throw new Error('Finish the current battle first.'); startRivalSpar(); }); setUi({ tab: 'battle' }); })}>⚔️ Start the graduation spar</button> : null}
             {seen.length ? seen.map(c => <CastRow key={c.id} c={c} k={k} />) : <p className="small muted">The team has not met them yet.</p>}
           </div>
         );
@@ -277,7 +278,7 @@ function TeamsCard({ k }: { k: number }) {
 /** Quests from the village guildmasters. The DM posts and completes them; everyone can see them. */
 function QuestCard() {
   const s = useGame(), dm = isDM(), w = s.world;
-  const [f, setF] = useState({ title: '', giver: '', xp: '30', poke: '100' });
+  const [f, setF] = useState({ title: '', giver: '', xp: '30', poke: '100', item: '', qty: '1' });
   const open = w.quests.filter(q => !q.done), done = w.quests.length - open.length;
   const graduate = () => update(d => {
     if (d.world.graduated) return;
@@ -288,8 +289,10 @@ function QuestCard() {
   });
   const add = () => update(d => {
     if (!f.title.trim()) return;
-    d.world.quests.push({ id: uid(), title: f.title.trim(), giver: f.giver.trim(), xp: Math.max(0, Number(f.xp) || 0), poke: Math.max(0, Number(f.poke) || 0) });
-    setF({ ...f, title: '' });
+    if (f.item.trim() && !defByName(f.item)) { toast(`There's no item called "${f.item}". Pick one from the list.`, 'bad'); return; }
+    const reward = f.item.trim() ? { item: defByName(f.item)!.n, qty: Math.max(1, Math.min(99, Number(f.qty) || 1)) } : {};
+    d.world.quests.push({ id: uid(), title: f.title.trim(), giver: f.giver.trim(), xp: Math.max(0, Number(f.xp) || 0), poke: Math.max(0, Number(f.poke) || 0), ...reward });
+    setF({ ...f, title: '', item: '', qty: '1' });
   });
   const complete = (id: string) => run(() => update(d => {
     const q = d.world.quests.find(x => x.id === id);
@@ -297,18 +300,20 @@ function QuestCard() {
     q.done = true;
     lootTeam().filter(x => x.hpCur > 0).forEach(x => { x.xp = (x.xp || 0) + q.xp; });
     d.storage.poke = (d.storage.poke || 0) + q.poke;
-    addLog(`Quest complete: ${q.title}. +${q.xp} XP each and ${money(q.poke)}.`);
+    const def = q.item ? defByName(q.item) : null;
+    if (def) addItemTo(d.storage.items, def, q.qty || 1);
+    addLog(`Quest complete: ${q.title}. +${q.xp} XP each and ${money(q.poke)}${def ? `, plus ${def.n}${(q.qty || 1) > 1 ? ' ×' + q.qty : ''} in team storage` : ''}.`);
     processLevelUps();
   }));
   if (!dm && !w.quests.length) return null;
   return (
     <section className="card">
       <h2>Quests</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Jobs from the village guildmasters. XP goes to every Pokémon still standing; money goes to the team bank.</p>
+      <p className="small muted" style={{ marginTop: 0 }}>Jobs from the village guildmasters. XP goes to every Pokémon still standing; money and item rewards go to the team.</p>
       {dm && !w.graduated ? <button className="btn primary" style={{ marginBottom: 8 }} onClick={graduate}>Graduation day: give 2 Escape Ropes and post Orrin&apos;s first quests</button> : null}
       {open.map(q => (
         <div className="list-item" key={q.id}>
-          <span className="grow"><b>{q.title}</b><div className="small muted">{q.giver ? q.giver + ' · ' : ''}{q.xp} XP each · {money(q.poke)}</div></span>
+          <span className="grow"><b>{q.title}</b><div className="small muted">{q.giver ? q.giver + ' · ' : ''}{q.xp} XP each · {money(q.poke)}{q.item ? ` · 🎁 ${q.item}${(q.qty || 1) > 1 ? ' ×' + q.qty : ''}` : ''}</div></span>
           {dm ? <>
             <button className="btn sm primary" onClick={() => complete(q.id)}>Complete</button>
             <button className="btn sm ghost" aria-label={`Remove ${q.title}`} onClick={() => update(d => { d.world.quests = d.world.quests.filter(x => x.id !== q.id); })}>✕</button>
@@ -324,6 +329,8 @@ function QuestCard() {
           <datalist id="quest-givers">{CAST.map(c => <option key={c.id} value={c.name} />)}</datalist>
           <label className="small">XP <input type="number" min={0} value={f.xp} onChange={e => setF({ ...f, xp: e.target.value })} style={{ width: 64 }} /></label>
           <label className="small">₽ <input type="number" min={0} value={f.poke} onChange={e => setF({ ...f, poke: e.target.value })} style={{ width: 76 }} /></label>
+          <input placeholder="Item reward (optional)" aria-label="Item reward" list="itemList" value={f.item} onChange={e => setF({ ...f, item: e.target.value })} style={{ flex: '1 1 150px' }} />
+          {f.item ? <label className="small">× <input type="number" min={1} max={99} aria-label="Item quantity" value={f.qty} onChange={e => setF({ ...f, qty: e.target.value })} style={{ width: 52 }} /></label> : null}
           <button className="btn sm" disabled={!f.title.trim()} onClick={add}>Post quest</button>
         </div>
       ) : null}

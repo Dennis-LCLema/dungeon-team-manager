@@ -236,3 +236,75 @@ describe('shiny sprites', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('graduation spar', () => {
+  it('matches each rival to the player line it chose, at that level, and attacks them first', async () => {
+    const { startRivalSpar, autoTurn } = await import('./battle');
+    const riolu = createChar('Lucario', '', 'Juan', 6), aron = createChar('Aron', '', 'Christian', 3);
+    update(s => { s.chars = [riolu, aron]; s.game.battle = null; startRivalSpar(); s.game.battle!.phase = 'fight'; });
+    const b = G().game.battle!;
+    const kip = b.enemies.find(e => e.name.startsWith('Kip'))!, pebble = b.enemies.find(e => e.name.startsWith('Pebble'))!;
+    expect(b.enemies).toHaveLength(4);
+    expect([kip.focus, kip.level]).toEqual([riolu.id, 6]);
+    expect([pebble.focus, pebble.level]).toEqual([aron.id, 3]);
+    expect(b.enemies.find(e => e.name.startsWith('Zephyr'))!.focus).toBeUndefined();
+    update(s => { const bb = s.game.battle!; bb.turn = bb.order.findIndex(o => o.id === kip.id); autoTurn(); });
+    expect(G().game.battle!.last?.target).toBe('Lucario');
+  });
+});
+
+describe('weapons and armor', () => {
+  it('armor raises Guard; a physical weapon helps physical moves only', async () => {
+    const { AC, SAC, weaponHit, heldDmg } = await import('./rules');
+    const c = createChar('Aron', '', 'Luis', 5);
+    const g0 = AC(c), s0 = SAC(c);
+    c.armor = { itemId: 'dragonhide', name: 'Dragonhide Armor' };
+    expect([AC(c) - g0, SAC(c) - s0]).toEqual([2, 1]);
+    c.weapon = { itemId: 'spikedbracer', name: 'Spiked Bracer' };
+    const phys = { cls: 'physical', type: 'rock' } as never, spec = { cls: 'special', type: 'rock' } as never;
+    expect([heldDmg(c, phys), heldDmg(c, spec)]).toEqual([2, 0]);
+    c.weapon = { itemId: 'championgauntlet', name: "Champion's Gauntlet" };
+    expect([weaponHit(c, phys), weaponHit(c, spec)]).toEqual([2, 2]);
+  });
+});
+
+describe('status conditions', () => {
+  it('burns hurt, sleep skips turns, types are immune, and battles clear them', async () => {
+    const { setStatus, statusTick, checkEnd } = await import('./battle');
+    const { heroId, foeId } = duel();
+    update(s => {
+      const hero = s.chars.find(c => c.id === heroId)!, foe = s.game.battle!.enemies.find(e => e.id === foeId)!;
+      expect(setStatus(hero, 'burn')).toMatch(/can't be burned/); // Charmander is Fire type
+      expect(hero.status).toBeFalsy();
+      setStatus(foe, 'burn');
+      const hp = foe.hpCur;
+      expect(statusTick(foe)).toBe(false);
+      expect(foe.hpCur).toBeLessThan(hp);
+      setStatus(foe, 'sleep');
+      vi.spyOn(Math, 'random').mockReturnValue(0); // d20 = 1: stays asleep
+      expect(statusTick(foe)).toBe(true);
+      vi.spyOn(Math, 'random').mockReturnValue(0.999); // d20 = 20: wakes
+      expect(statusTick(foe)).toBe(false);
+      expect(foe.status).toBeNull();
+      setStatus(hero, 'paralysis');
+      foe.hpCur = 0; foe.outReason = 'Fainted'; checkEnd();
+      expect(s.game.battle!.result).toBe('win');
+      expect(hero.status).toBeNull();
+    });
+  });
+});
+
+describe('previously on', () => {
+  it('recaps the highlights of the last finished session, oldest first', async () => {
+    const { recapLines } = await import('./recap');
+    const h = 3600e3, now = 100 * h;
+    const log = [ // newest first
+      { id: '1', t: now - 1 * h, who: '', text: 'The team traveled to Lumen Market.' },
+      { id: '2', t: now - 30 * h, who: '', text: 'Riolu reached level 3.' },
+      { id: '3', t: now - 30.5 * h, who: '', text: 'Dennis bought Potion for ₽ 50.' },
+      { id: '4', t: now - 31 * h, who: '', text: 'Quest complete: Find the lost Pichu.' },
+      { id: '5', t: now - 60 * h, who: '', text: 'Aron evolved into Lairon!' },
+    ];
+    expect(recapLines(log, now)).toEqual(['Quest complete: Find the lost Pichu.', 'Riolu reached level 3.']);
+  });
+});

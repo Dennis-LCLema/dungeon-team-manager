@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { run } from '../components/common';
-import { FIREBASE_CONFIG, gameCode, setGameCode, validCode } from '../game/firebase';
+import { FIREBASE_CONFIG, gameCode, inviteLink, setGameCode, validCode } from '../game/firebase';
 import { G, checkPw, owns, setUi, toast, useGame } from '../game/store';
 
 export default function Login() {
@@ -56,7 +56,7 @@ function GameCode() {
   if (!open) return (
     <section className="card login row between">
       <span>Game: <b className="mono">{cur}</b></span>
-      <button className="btn sm ghost" onClick={() => setOpen(true)}>Change</button>
+      <span className="row" style={{ gap: 4 }}><InviteButton /><button className="btn sm ghost" onClick={() => setOpen(true)}>Change</button></span>
     </section>
   );
   return (
@@ -70,4 +70,15 @@ function GameCode() {
       </form>
     </section>
   );
+}
+
+/** Copies the one-tap link that joins this game. Hidden on the Claude link and before a game is joined. */
+export function InviteButton({ big }: { big?: boolean }) {
+  if (!FIREBASE_CONFIG || window.claude?.use || !gameCode()) return null;
+  const copy = () => run(async () => {
+    const link = inviteLink();
+    try { await navigator.clipboard.writeText(link); toast('Invite link copied. Send it to your players!'); }
+    catch { toast(`Copy this link: ${link}`); }
+  });
+  return <button className={`btn ${big ? 'primary' : 'sm'}`} onClick={copy}>🔗 Copy invite link</button>;
 }

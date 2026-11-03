@@ -6,6 +6,7 @@ import {
   AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
+  slotOf, weaponHit,
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
@@ -213,7 +214,7 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
   const key: StatKey = mv.cls === 'physical' ? 'atk' : 'spa';
   const stab = typesOf(c).includes(mv.type), dmgMod = M(c, key) + (stab ? prof(c.level) : 0);
   const line = mv.cls !== 'status' && mv.dice
-    ? `${fmt(prof(c.level) + M(c, key))} to hit · ${mv.dice}${dmgMod ? fmt(dmgMod) : ''} dmg${stab ? ' · STAB' : ''}`
+    ? `${fmt(prof(c.level) + M(c, key) + weaponHit(c, mv))} to hit · ${mv.dice}${dmgMod ? fmt(dmgMod) : ''} dmg${stab ? ' · STAB' : ''}`
     : `Status · Save DC ${8 + prof(c.level) + M(c, 'spa')}`;
   const locked = c.inDungeon, name = mv.name;
   const onMove = (fn: (m: Move, x: Char) => void) => withChar(c.id, x => { const m = x.moves.find(y => y.name === name); if (m) fn(m, x); });
@@ -313,20 +314,23 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
     if (!r.ok) { toast(r.msg, 'bad'); return; }
     addLog(r.msg); toast(r.msg);
   });
+  /** Put a held item, weapon or armor in its slot; whatever was there goes back in the bag. */
   const hold = (i: number) => withChar(c.id, x => {
-    const it = x.items[i], def = defOf(it);
-    if (!it || !def || def.cat !== 'held') return;
-    if (x.held) addItemTo(x.items, defOf(x.held) || { n: x.held.name, id: '', fx: {} }, 1);
+    const it = x.items[i], def = defOf(it), slot = slotOf(def);
+    if (!it || !def || !slot) return;
+    const was = x[slot];
+    if (was) addItemTo(x.items, defOf(was) || { n: was.name, id: '', fx: {} }, 1);
     takeOne(x.items, it.name);
-    x.held = { itemId: def.id, name: def.n };
+    x[slot] = { itemId: def.id, name: def.n };
     clampHP(x);
-    addLog(`${nameOf(x)} is now holding ${def.n}.`);
+    addLog(slot === 'held' ? `${nameOf(x)} is now holding ${def.n}.` : `${nameOf(x)} equipped ${def.n}.`);
   });
-  const unhold = () => withChar(c.id, x => {
-    if (!x.held) return;
-    addItemTo(x.items, defOf(x.held) || { n: x.held.name, id: '', fx: {} }, 1);
-    addLog(`${nameOf(x)} put away its ${x.held.name}.`);
-    x.held = null;
+  const unhold = (slot: 'held' | 'weapon' | 'armor') => withChar(c.id, x => {
+    const was = x[slot];
+    if (!was) return;
+    addItemTo(x.items, defOf(was) || { n: was.name, id: '', fx: {} }, 1);
+    addLog(`${nameOf(x)} took off its ${was.name}.`);
+    x[slot] = null;
     clampHP(x);
   });
   const store = (i: number) => withChar(c.id, (x, s) => {
@@ -361,20 +365,25 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
   return (
     <details className="card" open>
       <summary>Bag ({c.items.reduce((s, i) => s + i.qty, 0)})</summary>
-      <div className="held"><span className="small muted">Held item</span>
-        {c.held ? (
-          <div className="row between" style={{ marginTop: 2, flexWrap: 'nowrap' }}>
-            <span style={{ minWidth: 0 }}><b>{c.held.name}</b> <span className="small muted">{defOf(c.held)?.d || ''}</span></span>
-            <button className="btn sm" onClick={unhold}>Take off</button>
+      {([['held', 'Held item', 'Hold one item from the bag, like a Power Band or Charcoal.'], ['weapon', '⚔️ Weapon', 'Equip a weapon, like Iron Claws or a Mystic Staff.'], ['armor', '🛡️ Armor', 'Equip armor, like a Shell Plate or Leaf Cloak.']] as const).map(([slot, label, empty]) => {
+        const it = c[slot];
+        return (
+          <div className="held" key={slot}><span className="small muted">{label}</span>
+            {it ? (
+              <div className="row between" style={{ marginTop: 2, flexWrap: 'nowrap' }}>
+                <span style={{ minWidth: 0 }}><b>{it.name}</b> <span className="small muted">{defOf(it)?.d || ''}</span></span>
+                <button className="btn sm" onClick={() => unhold(slot)}>Take off</button>
+              </div>
+            ) : <div className="small muted">Nothing. {empty}</div>}
           </div>
-        ) : <div className="small muted">Nothing. Hold one item from the bag, like a Power Band or Charcoal.</div>}
-      </div>
+        );
+      })}
       {c.items.length ? c.items.map((it, i) => {
-        const d0 = defOf(it), isHeld = d0?.cat === 'held';
+        const d0 = defOf(it), slot = slotOf(d0);
         return (
           <div className="list-item" key={it.name}>
             <div className="grow"><b>{it.name}</b> {d0 ? <RarChip r={d0.r} /> : null} <span className="mono small">×{it.qty}</span><div className="small muted">{it.note || d0?.d || ''}</div></div>
-            {isHeld ? <button className="btn sm" onClick={() => hold(i)}>Hold</button> : <button className="btn sm primary" onClick={() => use(i)}>Use</button>}
+            {slot ? <button className="btn sm" onClick={() => hold(i)}>{slot === 'held' ? 'Hold' : 'Equip'}</button> : <button className="btn sm primary" onClick={() => use(i)}>Use</button>}
             <button className="btn sm ghost" onClick={() => store(i)}>Store</button>
             <button className="btn sm ghost danger" onClick={() => drop(i)} aria-label="Throw away one">✕</button>
           </div>

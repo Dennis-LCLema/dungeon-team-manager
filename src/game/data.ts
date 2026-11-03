@@ -7,6 +7,8 @@ export interface Fx {
   levelUp?: number; escape?: boolean; reveal?: boolean; stat?: Partial<Record<StatKey | 'heart', number>>; init?: number; crit?: number;
   regen?: number; sash?: boolean; lifeOrb?: boolean; friend?: boolean; noEvo?: boolean; typeDmg?: string; evo?: string; evoTrade?: boolean;
   purify?: number; heart?: number; teamHeal?: string; keep?: boolean; revealStairs?: boolean; box?: boolean; revive?: number; tm?: string;
+  /** Weapon: to-hit and damage bonuses (wDie rolled each hit), only for moves of class wCls when set. Armor: Guard and Sp. Guard. */
+  wHit?: number; wDmg?: number; wDie?: string; wCls?: 'physical' | 'special'; guard?: number; spguard?: number;
 }
 export interface ItemDef { id: string; n: string; cat: string; r: string; v: number; d: string; fx: Fx; noDrop?: boolean }
 
@@ -50,7 +52,7 @@ export const DIFF: Record<string, { n: string; hp: number; dmg: number; d: strin
 };
 
 export const RAR: Record<string, string> = { c:'Common', u:'Uncommon', r:'Rare', v:'Very rare', l:'Legendary' };
-export const CATS: Record<string, string> = { berry:'Berries', seed:'Seeds', orb:'Orbs', med:'Medicine', held:'Held items', evo:'Evolution items', shadow:'Purification', gear:'Explorer gear', treasure:'Treasure', gummi:'Gummis', tm:'TMs' };
+export const CATS: Record<string, string> = { berry:'Berries', seed:'Seeds', orb:'Orbs', med:'Medicine', held:'Held items', weapon:'Weapons', armor:'Armor', evo:'Evolution items', shadow:'Purification', gear:'Explorer gear', treasure:'Treasure', gummi:'Gummis', tm:'TMs' };
 const It = (id: string, n: string, cat: string, r: string, v: number, d: string, fx?: Fx, extra?: Partial<ItemDef>): ItemDef => Object.assign({ id, n, cat, r, v, d, fx: fx || {} }, extra || {});
 export const ITEMS: ItemDef[] = [
   It('oran', 'Oran Berry', 'berry', 'c', 20, 'Eat: heal 2d4+2 HP.', { heal:'2d4+2' }),
@@ -106,6 +108,20 @@ export const ITEMS: ItemDef[] = [
   It('lifeorb', 'Life Orb', 'held', 'v', 1500, 'Hold: your damaging moves deal +1d6 damage, but you take 1d4 recoil each hit.', { lifeOrb:true }),
   It('soothebell', 'Soothe Bell', 'held', 'r', 1000, 'Hold: builds friendship. After 3 long rests holding it, friendship evolutions (like Riolu → Lucario) are ready.', { friend:true }),
   It('everstone', 'Everstone', 'held', 'c', 100, 'Hold: you will not evolve while holding this.', { noEvo:true }),
+
+  // Weapons and armor: their own slots, worn alongside a held item.
+  It('ironclaws', 'Iron Claws', 'weapon', 'c', 150, 'Weapon: +1 to hit with physical moves.', { wHit:1, wCls:'physical' }),
+  It('spikedbracer', 'Spiked Bracer', 'weapon', 'u', 400, 'Weapon: +2 damage with physical moves.', { wDmg:2, wCls:'physical' }),
+  It('focuscrystal', 'Focus Crystal', 'weapon', 'u', 400, 'Weapon: +2 damage with special moves.', { wDmg:2, wCls:'special' }),
+  It('razorfangblade', 'Razor Fang Blade', 'weapon', 'r', 900, 'Weapon: physical moves get +1 to hit and +1d4 damage.', { wHit:1, wDie:'1d4', wCls:'physical' }),
+  It('mysticstaff', 'Mystic Staff', 'weapon', 'r', 900, 'Weapon: special moves get +1 to hit and +1d4 damage.', { wHit:1, wDie:'1d4', wCls:'special' }),
+  It('championgauntlet', "Champion's Gauntlet", 'weapon', 'v', 2500, 'Weapon: every damaging move gets +2 to hit and +2 damage.', { wHit:2, wDmg:2 }),
+  It('shellplate', 'Shell Plate', 'armor', 'c', 150, 'Armor: +1 Guard (vs physical moves).', { guard:1 }),
+  It('leafcloak', 'Leaf Cloak', 'armor', 'c', 150, 'Armor: +1 Sp. Guard (vs special moves).', { spguard:1 }),
+  It('ironscalemail', 'Iron Scale Mail', 'armor', 'u', 450, 'Armor: +2 Guard.', { guard:2 }),
+  It('mirrormantle', 'Mirror Mantle', 'armor', 'u', 450, 'Armor: +2 Sp. Guard.', { spguard:2 }),
+  It('dragonhide', 'Dragonhide Armor', 'armor', 'r', 1200, 'Armor: +2 Guard and +1 Sp. Guard.', { guard:2, spguard:1 }),
+  It('titansaegis', "Titan's Aegis", 'armor', 'v', 3000, 'Armor: +3 Guard and +3 Sp. Guard. Forged from a fossil titan\'s shell.', { guard:3, spguard:3 }),
   ...[['charcoal','Charcoal','fire'],['mysticwater','Mystic Water','water'],['miracleseed','Miracle Seed','grass'],['magnet','Magnet','electric'],
       ['nevermeltice','Never-Melt Ice','ice'],['blackbelt','Black Belt','fighting'],['poisonbarb','Poison Barb','poison'],['softsand','Soft Sand','ground'],
       ['sharpbeak','Sharp Beak','flying'],['twistedspoon','Twisted Spoon','psychic'],['silverpowder','Silver Powder','bug'],['hardstone','Hard Stone','rock'],
@@ -227,11 +243,11 @@ export const ringOf = (t: string) => RING[t] || TCOL[t];
 export const KIND: Record<string, { n: string; g: string; c: string }> = { waystone:{ n:'Waystone', g:'✧', c:'#d8b8ff' }, haven:{ n:'Safe Zone', g:'⌂', c:'#ffd37a' }, wild:{ n:'Wild area', g:'❖', c:'#8ef0a7' }, rift:{ n:'Red Rift', g:'◈', c:'#ff4d6d' }, stairs:{ n:'Labyrinth', g:'▼', c:'#8fb2ff' } };
 export const THEME: Record<string, string[]> = {
   normal:['silkscarf', 'potion', 'apple', 'escaperope', 'escapeorb', 'explorerkit'], fire:['charcoal', 'firestone', 'sunstone', 'rawst', 'blastseed'], water:['mysticwater', 'waterstone', 'sitrus', 'kingsrock'],
-  grass:['miracleseed', 'leafstone', 'sunstone', 'oran', 'lum'], bug:['silverpowder', 'sleepseed', 'stunseed', 'pecha'], electric:['magnet', 'thunderstone', 'cheri', 'quickclaw'],
-  flying:['sharpbeak', 'warpseed', 'luminous'], ice:['nevermeltice', 'icestone', 'aspear'], ground:['softsand', 'mapfrag', 'trapsee'], rock:['hardstone', 'focussash', 'defensescarf'],
-  ghost:['spelltag', 'duskstone', 'revive', 'reviver'], dark:['blackglasses', 'duskstone', 'razorclaw', 'vileseed'], psychic:['twistedspoon', 'dawnstone', 'persim', 'purifycharm', 'heartbandana'],
-  fairy:['fairyfeather', 'moonstone', 'shinystone', 'soothebell'], steel:['metalcoat', 'linkingcord', 'powerband', 'specialband'], fighting:['blackbelt', 'powerband', 'focussash', 'scopelens'],
-  poison:['poisonbarb', 'pecha', 'healseed', 'lifeorb'], dragon:['dragonfang', 'dragonscale', 'maxelixir', 'leftovers']
+  grass:['miracleseed', 'leafstone', 'sunstone', 'oran', 'lum', 'leafcloak'], bug:['silverpowder', 'sleepseed', 'stunseed', 'pecha'], electric:['magnet', 'thunderstone', 'cheri', 'quickclaw'],
+  flying:['sharpbeak', 'warpseed', 'luminous'], ice:['nevermeltice', 'icestone', 'aspear'], ground:['softsand', 'mapfrag', 'trapsee'], rock:['hardstone', 'focussash', 'defensescarf', 'shellplate'],
+  ghost:['spelltag', 'duskstone', 'revive', 'reviver'], dark:['blackglasses', 'duskstone', 'razorclaw', 'vileseed'], psychic:['twistedspoon', 'dawnstone', 'persim', 'purifycharm', 'heartbandana', 'focuscrystal', 'mirrormantle'],
+  fairy:['fairyfeather', 'moonstone', 'shinystone', 'soothebell'], steel:['metalcoat', 'linkingcord', 'powerband', 'specialband', 'ironscalemail', 'ironclaws'], fighting:['blackbelt', 'powerband', 'focussash', 'scopelens', 'ironclaws', 'spikedbracer'],
+  poison:['poisonbarb', 'pecha', 'healseed', 'lifeorb'], dragon:['dragonfang', 'dragonscale', 'maxelixir', 'leftovers', 'dragonhide']
 };
 export const RESCUES = ['A lost Pichu is stuck in a thorn bush and crying for its mother.', 'An injured Bidoof is trapped under fallen rocks.', 'A Wooper wandered too far from its pond and cannot find the way back.', 'Two young Eevee are surrounded by a Shadow Pokémon scout.', 'A Chingling fell into a pit and its bell is cracked.', 'An old Torkoal is out of breath halfway up a cliff.'];
 
@@ -264,7 +280,7 @@ export const TEAMS = {
 };
 
 /** Story cast. `layer` unset = roams every layer. `secret` is shown to the DM only. */
-export interface CastMember { id: string; layer?: number; team?: keyof typeof TEAMS; keeper?: boolean; name: string; species: string; role: string; desc: string; secret?: string; level?: number }
+export interface CastMember { id: string; layer?: number; team?: keyof typeof TEAMS; keeper?: boolean; rivalOf?: string; name: string; species: string; role: string; desc: string; secret?: string; level?: number }
 export const CAST: CastMember[] = [
   { id: 'zoroark', name: 'The Trickster', species: 'Zoroark', level: 15, role: 'Villain · roams every layer',
     desc: 'A sly, grinning shape that always seems to be one step ahead of the team.',
@@ -303,16 +319,16 @@ export const CAST: CastMember[] = [
     desc: 'The last Pokémon alive who remembers the world before the Calamity. Leads the Citadel until Basalt comes back. He still sets a place for him at every meal.',
     secret: 'Saw the First Egg crack open 30 years ago. That was the Great Calamity. If it is fed enough Shadow power, it will hatch again. Vael watched Basalt walk toward it and did not stop him. He has never forgiven himself.' },
   // Team Razorwind: rivals, one per player
-  { id: 'kip', team: 'rivals', name: 'Kip', species: 'Pawniard', role: 'Leader · rival to Riolu',
+  { id: 'kip', team: 'rivals', rivalOf: 'riolu', name: 'Kip', species: 'Pawniard', role: 'Leader · rival to Riolu',
     desc: 'Sharp tongue, sharper blades. Was beaten once by Riolu in a school sparring match and has trained every day since.',
     secret: 'Kip lost an older sibling in the Calamity. Opening the gates is personal.' },
-  { id: 'zephyr', team: 'rivals', name: 'Zephyr', species: 'Rookidee', role: 'Scout · rival to Hawlucha',
+  { id: 'zephyr', team: 'rivals', rivalOf: 'hawlucha', name: 'Zephyr', species: 'Rookidee', role: 'Scout · rival to Hawlucha',
     desc: 'A show-off flyer who narrates his own stunts. Wants a sky duel with Hawlucha, badly.',
     secret: 'Afraid of the dark. The deeper layers scare him more than he lets on.' },
-  { id: 'sable', team: 'rivals', name: 'Sable', species: 'Fennekin', role: 'Strategist · rival to Litwick',
+  { id: 'sable', team: 'rivals', rivalOf: 'litwick', name: 'Sable', species: 'Fennekin', role: 'Strategist · rival to Litwick',
     desc: 'Cool, clever and always three moves ahead. Thinks Litwick is a fire type that does not take fire seriously.',
     secret: 'Secretly admires Litwick. Will help the team once, in secret, if they are kind to her.' },
-  { id: 'pebble', team: 'rivals', name: 'Pebble', species: 'Rolycoly', role: 'Muscle · rival to Aron',
+  { id: 'pebble', team: 'rivals', rivalOf: 'aron', name: 'Pebble', species: 'Rolycoly', role: 'Muscle · rival to Aron',
     desc: 'Loud, friendly and always hungry. Treats every contest with Aron like a festival.',
     secret: 'The easiest rival to turn into a friend. Could switch teams if Razorwind treats him badly.' },
   // Hearthroot Rescue Corps: medics led by Mabel
@@ -346,9 +362,9 @@ export const CAST: CastMember[] = [
 
 /** Orrin's first jobs for new graduates (Chapter 1). */
 export const STARTER_QUESTS = [
-  { title: 'Find the lost Pichu crying in the Training Meadow', giver: 'Guildmaster Orrin', xp: 40, poke: 100 },
-  { title: 'Gather 5 Oran Berries for Lei of the Rescue Corps', giver: 'Lei', xp: 30, poke: 80 },
-  { title: 'Drive off the wild Pokémon raiding the supply carts', giver: 'Guildmaster Orrin', xp: 60, poke: 150 },
+  { title: 'Find the lost Pichu crying in the Training Meadow', giver: 'Guildmaster Orrin', xp: 40, poke: 100, item: 'Oran Berry', qty: 2 },
+  { title: 'Gather 5 Oran Berries for Lei of the Rescue Corps', giver: 'Lei', xp: 30, poke: 80, item: 'Heal Seed', qty: 1 },
+  { title: 'Drive off the wild Pokémon raiding the supply carts', giver: 'Guildmaster Orrin', xp: 60, poke: 150, item: 'Explorer Kit', qty: 1 },
 ];
 
 /** Quick creative moments for the DM. `kind`: adv = attack with advantage, dis = the other side attacks with disadvantage,
@@ -362,3 +378,13 @@ export const FIELD_PRESETS = [
   { name: '🧊 Ice Rink', note: 'Ice on Water. Fast footing for you, slippery for them.', kind: 'hit', amt: 1, rounds: 3 },
 ] as const;
 export const FIELD_KINDS: Record<string, string> = { adv: 'attack with advantage', dis: 'the other side attacks with disadvantage', hit: '+ to hit', dmg: '+ damage' };
+
+/** Status conditions the battle engine runs at the start of each affected Pokémon's turn. `immune` types can't get it. */
+export const STATUS: Record<string, { n: string; g: string; d: string; immune: string[] }> = {
+  burn: { n: 'Burned', g: '🔥', d: 'Takes damage at the start of each turn.', immune: ['fire'] },
+  poison: { n: 'Poisoned', g: '☠️', d: 'Takes more damage at the start of each turn.', immune: ['poison', 'steel'] },
+  paralysis: { n: 'Paralyzed', g: '⚡', d: '1 in 4 chance to lose each turn.', immune: ['electric'] },
+  sleep: { n: 'Asleep', g: '💤', d: 'Loses its turn. Rolls d20 each turn: 11+ wakes up.', immune: [] },
+  freeze: { n: 'Frozen', g: '🧊', d: 'Loses its turn. Rolls d20 each turn: 16+ thaws. A Fire hit thaws it.', immune: ['ice'] },
+  confusion: { n: 'Confused', g: '💫', d: 'Each turn: d20 15+ snaps out; otherwise 1 in 3 chance to hurt itself and lose the turn.', immune: [] },
+};

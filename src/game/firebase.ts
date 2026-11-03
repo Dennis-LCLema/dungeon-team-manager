@@ -20,7 +20,18 @@ export const gameCode = (): string => lsGet(CODE_KEY, '');
 export function setGameCode(code: string) {
   lsSet(CODE_KEY, code.trim().toLowerCase());
   try { localStorage.removeItem(LS_KEY); } catch { /* storage blocked */ }
-  location.reload();
+  location.replace(location.pathname); // reload without any ?game= in the address
+}
+
+/** The link that joins this game in one tap. */
+export const inviteLink = (code = gameCode()) => `${location.origin}${location.pathname}?game=${encodeURIComponent(code)}`;
+
+/** Opened from an invite link? Join that game (reloads) or just tidy the address. Runs once at start-up. */
+export function joinFromLink() {
+  const code = new URLSearchParams(location.search).get('game')?.trim().toLowerCase();
+  if (!code || !FIREBASE_CONFIG || window.claude?.use) return;
+  if (validCode(code) && code !== gameCode()) { setGameCode(code); return; }
+  history.replaceState(null, '', location.pathname);
 }
 /** Game codes are the only lock on a game, so they must be long enough to be hard to guess. */
 export const validCode = (c: string) => /^[a-z0-9-]{8,40}$/.test(c.trim().toLowerCase());

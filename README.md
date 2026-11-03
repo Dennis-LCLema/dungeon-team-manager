@@ -24,6 +24,10 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🗺️ **9 overworld layers** and a **40-floor Labyrinth**, with a Shadow Gatekeeper every 5 floors
 - ⚔️ Turn-based battles with initiative, ambushes, Shadow Pokémon and purification
 - 🌫️ **Creative moments**: turn a clever idea (Fire on Water makes a Steam Fog) into a field effect for a few rounds
+- 🔥 **Status conditions**: burn, poison, paralysis, sleep, freeze and confusion run automatically each turn
+- ⚔️🛡️ **Weapons and armor** in their own slots, alongside a held item
+- 🥊 A one-tap **graduation spar** against the rival team, each rival hunting the player it chose
+- 📜 **Previously on…**: a recap of last session's highlights, shown on everyone's screen
 - 💰 Loot rolls with suggestions for who should get each item, shops, **Charisma haggling** and quests
 - 🧑‍🤝‍🧑 A story cast: village guildmasters, a rival team, a medical corps, and a mysterious trickster. Players see characters once they've met them, and a friendship meter changes prices and help
 - 🖼️ Painted battle backgrounds for every layer, Labyrinth descent and Red Rift, plus pixel sprites for 1,200+ Pokémon
@@ -38,7 +42,7 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 | **Claude link** | ✅ Everyone shares one live team | Groups where everyone has a Claude account |
 | **GitHub Pages** | ✅ Everyone with the same **game code** shares one live team (through Firebase) | Anyone with a browser |
 
-**Joining a game on GitHub Pages:** open the site, type the **game code** from your DM in the *Join your game* box, then log in. Codes are 8–40 letters, numbers or dashes. Anyone with the site and the code can join, so keep the code within your group. Without a code, the team stays on that one device.
+**Joining a game on GitHub Pages:** tap the DM's **invite link** (Admin → Invite players → Copy invite link), or open the site and type the **game code** in the *Join your game* box. Then log in. Codes are 8–40 letters, numbers or dashes. Anyone with the site and the code can join, so keep the code within your group. Without a code, the team stays on that one device.
 
 The shared database is Google Firebase (project settings in `src/game/firebase.ts`, access rules in `firestore.rules`).
 

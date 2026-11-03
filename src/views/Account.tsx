@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { run } from '../components/common';
+import { FIREBASE_CONFIG, gameCode, inviteLink } from '../game/firebase';
+import { InviteButton } from './Login';
 import { nameOf } from '../game/rules';
 import { G, ask, blankShared, checkPw, exportFile, hashPw, isDM, me, remote, setUi, toast, update, useGame } from '../game/store';
 import type { Char } from '../game/types';
@@ -99,6 +101,14 @@ export default function Account() {
       </section>
       {dm ? (
         <>
+          {FIREBASE_CONFIG && !window.claude?.use && gameCode() ? (
+            <section className="card callout">
+              <h2>Invite players</h2>
+              <p className="small" style={{ marginTop: 0 }}>Send this link. Tapping it joins game <b className="mono">{gameCode()}</b> with no code to type.</p>
+              <p className="small mono" style={{ wordBreak: 'break-all' }}>{inviteLink()}</p>
+              <InviteButton big />
+            </section>
+          ) : null}
           <section className="card">
             <h2>People</h2>
             {s.users.list.map(x => (

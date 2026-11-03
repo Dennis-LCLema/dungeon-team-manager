@@ -6,7 +6,7 @@ import { DataLists } from './components/Catalog';
 import { loadDex } from './game/dex';
 import { loadSpriteIds } from './game/pokeapi';
 import { migrateChars, nameOf, needsMigration } from './game/rules';
-import { G, activeChar, isDM, me, owns, remote, setUi, toast, update, useGame, useUi } from './game/store';
+import { G, activeChar, canUndo, isDM, me, owns, remote, saveBackup, setUi, toast, undo, update, useGame, useUi } from './game/store';
 import { initSync } from './game/sync';
 import { lsSet } from './lib/util';
 import Account from './views/Account';
@@ -81,6 +81,9 @@ function Shell() {
   const act = activeChar(), b = s.game.battle;
 
   useEffect(() => { if (needsMigration(s.chars)) update(migrateChars); }, [s.chars]);
+  // The DM's device keeps a copy of the game, at most every 10 minutes, so no mistake or wipe is final.
+  const lastBackup = useRef(0);
+  useEffect(() => { if (dm && s.chars.length && Date.now() - lastBackup.current > 10 * 60e3) { lastBackup.current = Date.now(); saveBackup(s); } }, [dm, s]);
 
   let tab = ui.tab;
   if (tab === 'sheet' && !act) tab = dm ? 'party' : 'play';
@@ -160,6 +163,7 @@ export default function App() {
             {remote.live ? (remote.readOnly ? 'Shared · view only' : 'Shared team') : 'This device'}
           </span>
           {who ? <MusicPlayer /> : null}
+          {who?.role === 'dm' ? <button className="btn sm ghost" disabled={!canUndo()} onClick={undo} title="Undo your last change" aria-label="Undo your last change">↩ Undo</button> : null}
           {who ? (
             <button className="btn sm ghost" onClick={() => setUi({ tab: 'account' })}>{who.name}{who.role === 'dm' ? ' · DM' : ''}</button>
           ) : null}

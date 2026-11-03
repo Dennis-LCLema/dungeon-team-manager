@@ -28,6 +28,9 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - ⚔️🛡️ **Weapons and armor** in their own slots, alongside a held item
 - 🥊 A one-tap **graduation spar** against the rival team, each rival hunting the player it chose
 - 📜 **Previously on…**: a recap of last session's highlights, shown on everyone's screen
+- 🎲 **Ability checks** (STR, DEX, CON, INT, WIS, CHA) from the sheet, and **status moves that resolve themselves** with a save against the DC
+- ↩ **Undo** for the DM, and **automatic backups** of the whole game on the DM's device (last 3 days)
+- 📱 **Installs like an app**: on a phone, open the site and choose *Add to Home Screen* (iPhone: Share menu; Android: ⋮ menu)
 - 💰 Loot rolls with suggestions for who should get each item, shops, **Charisma haggling** and quests
 - 🧑‍🤝‍🧑 A story cast: village guildmasters, a rival team, a medical corps, and a mysterious trickster. Players see characters once they've met them, and a friendship meter changes prices and help
 - 🖼️ Painted battle backgrounds for every layer, Labyrinth descent and Red Rift, plus pixel sprites for 1,200+ Pokémon

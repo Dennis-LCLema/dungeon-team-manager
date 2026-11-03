@@ -1,6 +1,6 @@
 /* Battle engine. State-changing functions run inside update(). */
 import { T, fmt, roll, rollDice, uid } from '../lib/util';
-import { CAST, LAYERS, STATUS, SURPRISE } from './data';
+import { CAST, LAYERS, STATUS, STATUS_MOVES, STATUS_SAVE, SURPRISE } from './data';
 import { getMove, getPokemonAny, prevoOf } from './dex';
 import { G, addLog, canEdit, isDM, owns } from './store';
 import type { AttackResult, Battle, Char, Enemy, Fighter, Move, OrderEntry, Shared, Status } from './types';
@@ -252,6 +252,14 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   if (mv.cls === 'status' || !mv.dice) {
     res.status = true;
     res.dc = 8 + prof(actor.level) + M(actor, 'spa') + (ab === 'prankster' ? 2 : 0);
+    const st = STATUS_MOVES[mv.name];
+    if (st && onTeam(actor) !== onTeam(target) && !isOut(target)) {
+      const key = STATUS_SAVE[st], label = { def: 'CON', spe: 'DEX', spd: 'WIS' }[key], d = roll(20), m = M(target, key), ok = d + m >= res.dc;
+      const why = target.status ? `${tn} is already ${STATUS[target.status].n.toLowerCase()}.` : ok ? `${tn} resists!` : setStatus(target, st);
+      res.save = `${label} save ${d}${fmt(m)} = ${d + m} vs DC ${res.dc}: ${ok ? 'saved' : 'failed'}. ${why}`;
+      blog(`${who} used ${T(mv.name)} on ${tn}. ${res.save}`);
+      return record();
+    }
     blog(`${who} used ${T(mv.name)} on ${tn}. ${mv.desc || ''} (Save DC ${res.dc})`);
     return record();
   }

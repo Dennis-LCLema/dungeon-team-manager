@@ -388,3 +388,14 @@ export const STATUS: Record<string, { n: string; g: string; d: string; immune: s
   freeze: { n: 'Frozen', g: '🧊', d: 'Loses its turn. Rolls d20 each turn: 16+ thaws. A Fire hit thaws it.', immune: ['ice'] },
   confusion: { n: 'Confused', g: '💫', d: 'Each turn: d20 15+ snaps out; otherwise 1 in 3 chance to hurt itself and lose the turn.', immune: [] },
 };
+
+/** Status moves the engine resolves itself: the target saves against the move's DC or gets the status. */
+export const STATUS_MOVES: Record<string, 'burn' | 'poison' | 'paralysis' | 'sleep' | 'confusion'> = {
+  'thunder-wave': 'paralysis', 'stun-spore': 'paralysis', glare: 'paralysis',
+  'will-o-wisp': 'burn',
+  'poison-powder': 'poison', 'poison-gas': 'poison', toxic: 'poison', 'toxic-thread': 'poison',
+  'sleep-powder': 'sleep', hypnosis: 'sleep', spore: 'sleep', sing: 'sleep', 'lovely-kiss': 'sleep', 'grass-whistle': 'sleep', 'dark-void': 'sleep', yawn: 'sleep',
+  'confuse-ray': 'confusion', supersonic: 'confusion', swagger: 'confusion', 'sweet-kiss': 'confusion', 'teeter-dance': 'confusion', flatter: 'confusion',
+};
+/** Which stat saves against each status: CON (Defense) toughs out paralysis and poison, DEX (Speed) dodges a burn, WIS (Sp. Def) resists sleep and confusion. */
+export const STATUS_SAVE = { paralysis: 'def', poison: 'def', burn: 'spe', sleep: 'spd', confusion: 'spd' } as const;

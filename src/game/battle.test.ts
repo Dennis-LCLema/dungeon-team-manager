@@ -351,3 +351,52 @@ describe('sync', () => {
   });
 });
 function blankSharedWorld() { return { layer: 0, at: '0:waystone', unlocked: [0], deepest: 0, votes: {} as Record<string, string>, shop: {}, area: {}, rifts: {}, announce: null, met: {}, bond: {}, quests: [] }; }
+
+describe('undo', () => {
+  it("reverses the DM's last change, and is cleared when someone else changes the game", async () => {
+    const { undo, canUndo, replaceFromRemote } = await import('./store');
+    update(s => { s.storage.poke = 100; });
+    const layer = G().world.layer;
+    update(s => { s.storage.poke = 999; s.world.layer = 7; });
+    undo();
+    expect([G().storage.poke, G().world.layer]).toEqual([100, layer]);
+    update(s => { s.storage.poke = 5; });
+    expect(canUndo()).toBe(true);
+    replaceFromRemote({ ...G(), storage: { ...G().storage, poke: 7 } }); // another player's change arrives
+    expect(canUndo()).toBe(false);
+    expect(G().storage.poke).toBe(7);
+  });
+});
+
+describe('automatic backups', () => {
+  it('keep one copy per day for the last 3 days', async () => {
+    const { saveBackup, autoBackups } = await import('./store');
+    const mem = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v); }, removeItem: (k: string) => { mem.delete(k); } });
+    const day = 86400e3, t0 = Date.UTC(2026, 10, 1, 12);
+    for (const [d, poke] of [[0, 1], [0, 2], [1, 3], [2, 4], [3, 5]]) saveBackup({ ...G(), storage: { items: [], poke } }, t0 + d * day);
+    const list = autoBackups();
+    expect(list.map(b => b.day)).toEqual(['2026-11-04', '2026-11-03', '2026-11-02']);
+    expect(list.map(b => b.state.storage.poke)).toEqual([5, 4, 3]);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('status moves', () => {
+  it('roll a save against the DC and apply the status on a fail', () => {
+    const { heroId, foeId } = duel();
+    const wave = { name: 'thunder-wave', type: 'electric', cls: 'status', dice: '', ppMax: null, ppCur: 0, desc: '' } as never;
+    vi.spyOn(Math, 'random').mockReturnValue(0); // the target rolls a 1
+    let r: AttackResult | null = null;
+    update(s => { const hero = s.chars.find(c => c.id === heroId)!, foe = s.game.battle!.enemies.find(e => e.id === foeId)!; r = resolveMove(hero, wave, foe); });
+    expect(r!.save).toMatch(/failed\. .*paralyzed/i);
+    expect(G().game.battle!.enemies.find(e => e.id === foeId)!.status).toBe('paralysis');
+    vi.spyOn(Math, 'random').mockReturnValue(0.999); // a 20 always saves
+    update(s => { const hero = s.chars.find(c => c.id === heroId)!, foe = s.game.battle!.enemies.find(e => e.id === foeId)!; foe.status = null; r = resolveMove(hero, wave, foe); });
+    expect(r!.save).toMatch(/saved\. .*resists/);
+    // Will-O-Wisp on a Fire type: fails the save but is immune.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    update(s => { const hero = s.chars.find(c => c.id === heroId)!, foe = s.game.battle!.enemies.find(e => e.id === foeId)!; r = resolveMove(foe, { ...(wave as object), name: 'will-o-wisp', type: 'fire' } as never, hero); });
+    expect(r!.save).toMatch(/can't be burned/);
+  });
+});

@@ -3,14 +3,13 @@
    the original app, so an existing shared team keeps working. */
 import { G, getUi, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast } from './store';
 import type { Char, LogEntry, Shared, SharedDocKey } from './types';
+import { stable } from '../lib/util';
 import { FIREBASE_CONFIG, firebaseDb, gameCode } from './firebase';
 
 const DOCS: Record<SharedDocKey, string> = {
   game: 'game/current', dungeon: 'game/dungeon', loot: 'game/loot', rules: 'config/rules',
   world: 'game/world', storage: 'game/storage', log: 'game/log', users: 'config/users',
 };
-const stable = (v: unknown) => JSON.stringify(v, (_k, x) =>
-  x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((o: any, key) => { o[key] = x[key]; return o; }, {}) : x);
 const clone = <V,>(v: V): V => JSON.parse(JSON.stringify(v));
 
 let db: any = null;

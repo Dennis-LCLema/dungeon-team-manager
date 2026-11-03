@@ -52,6 +52,8 @@ export interface AttackResult {
   status?: boolean; dc?: number; d20?: number; bonus?: number; total?: number; def?: number; defName?: string;
   hit?: boolean; crit?: boolean; fumble?: boolean; dmg?: number; eff?: number; adv?: boolean; extra?: string;
   ko?: boolean; hpLeft?: number; hpMax?: number; manual?: boolean; dis?: boolean; fx?: string;
+  /** A status move the engine resolved: the save line, e.g. "WIS save 9 + 1 = 10 vs DC 13: failed. Asleep!" */
+  save?: string;
 }
 /** A creative moment in battle (e.g. Fire on Water makes Steam Fog). Helps `side` until `rounds` runs out. */
 export interface FieldFx { id: string; name: string; side: 'team' | 'enemy'; kind: 'adv' | 'dis' | 'hit' | 'dmg'; amt: number; rounds: number; note?: string }

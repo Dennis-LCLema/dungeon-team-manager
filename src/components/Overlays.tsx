@@ -102,7 +102,7 @@ export function AttackPopup() {
         <div className="hp-who"><b>{p.actor}</b> used <b>{p.move}</b> <TypeChip t={p.moveType} /> on <b>{p.target}</b></div>
         <div className="hp-head">{head}</div>
         {p.hit && !p.status && p.dmg ? <div className="hp-dmg mono">−{p.dmg} HP</div> : null}
-        {p.status ? <div className="hp-line">Save DC {p.dc}. The DM resolves the effect.</div> : (
+        {p.status ? <div className="hp-line">{p.save || `Save DC ${p.dc}. The DM resolves the effect.`}</div> : (
           <div className="hp-line mono">
             d20 {p.d20}{(p.bonus || 0) >= 0 ? '+' : ''}{p.bonus} = {p.total} vs {p.defName} {p.def}{p.adv ? ' · advantage' : p.dis ? ' · disadvantage' : ''}
           </div>

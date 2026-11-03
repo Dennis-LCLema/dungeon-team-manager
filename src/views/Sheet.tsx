@@ -10,7 +10,7 @@ import {
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
-import { T, setPath, slug, toID, fmt, readImage } from '../lib/util';
+import { T, setPath, slug, toID, fmt, readImage, roll } from '../lib/util';
 
 const DM_FIELD = /^(shiny|player|evoChoice|evoLevel|bonus\.|heart|types\.|awakenedType|base\.|abilitiesText|nickname|tree\..*\.(label|name|desc)$)/;
 
@@ -207,6 +207,23 @@ function AbilityCard({ c }: { c: Char }) {
         {edit ? <div className="row" style={{ marginTop: 8 }}><button className="btn" onClick={send}>Send to Dennis</button></div> : null}
       </>}
     </details>
+  );
+}
+
+/** D&D-style ability checks: d20 + the stat's modifier, posted to the shared log so the DM sees every roll. */
+function AbilityChecks({ c }: { c: Char }) {
+  const checks: [StatKey | 'heart', string][] = [['atk', 'STR'], ['spe', 'DEX'], ['def', 'CON'], ['spa', 'INT'], ['spd', 'WIS'], ['heart', 'CHA']];
+  const check = (k: StatKey | 'heart', label: string) => {
+    const d = roll(20), m = M(c, k), total = d + m;
+    const msg = `${nameOf(c)} rolled a ${label} check: ${d}${fmt(m)} = ${total}${d === 20 ? ' (natural 20!)' : d === 1 ? ' (natural 1)' : ''}.`;
+    update(() => addLog(msg));
+    toast(`🎲 ${label} check: ${total}`);
+  };
+  return (
+    <div className="row" style={{ marginTop: 10, gap: 6 }} role="group" aria-label="Ability checks">
+      <span className="small muted">🎲 Check:</span>
+      {checks.map(([k, label]) => <button key={k} className="btn sm" title={`d20 ${fmt(M(c, k))}`} onClick={() => check(k, label)}>{label} <span className="mono small muted">{fmt(M(c, k))}</span></button>)}
+    </div>
   );
 }
 
@@ -608,6 +625,7 @@ export default function Sheet() {
             <button className="btn sm" onClick={() => { const h = shortRestHeal(c); withChar(c.id, x => { x.hpCur += h; clampHP(x); }); toast(`Short rest: healed ${h} HP.`); }}>Short rest</button>
             <button className="btn sm primary" onClick={() => { withChar(c.id, x => { longRest(x); addLog(`${nameOf(x)} took a long rest.`); }); toast('Long rest: HP, PP and assists restored.'); }}>Long rest</button>
           </div>
+          {canEdit(c) ? <AbilityChecks c={c} /> : null}
           <div className="grid3" style={{ marginTop: 12 }}>
             <div className="stat"><b>{AC(c)}</b><small>Guard (vs physical)</small></div>
             <div className="stat"><b>{SAC(c)}</b><small>Sp. Guard (vs special)</small></div>

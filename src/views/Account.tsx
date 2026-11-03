@@ -3,7 +3,8 @@ import { run } from '../components/common';
 import { FIREBASE_CONFIG, gameCode, inviteLink } from '../game/firebase';
 import { InviteButton } from './Login';
 import { nameOf, parseBackup } from '../game/rules';
-import { G, ask, blankShared, checkPw, exportFile, hashPw, isDM, me, remote, setUi, toast, update, useGame } from '../game/store';
+import { LAYERS } from '../game/data';
+import { G, ask, autoBackups, blankShared, checkPw, exportFile, hashPw, isDM, me, remote, setUi, toast, update, useGame } from '../game/store';
 import { uid } from '../lib/util';
 
 async function importJSON(text: string) {
@@ -21,6 +22,8 @@ async function importJSON(text: string) {
 }
 
 const HOUSE_RULES = [
+  'Status moves like Thunder Wave, Will-O-Wisp, Toxic, Sleep Powder and Confuse Ray resolve themselves: the target saves (CON vs paralysis and poison, DEX vs burn, WIS vs sleep and confusion) against the move's DC.',
+  'Ability checks: d20 + the stat's modifier (STR Attack, DEX Speed, CON Defense, INT Sp. Atk, WIS Sp. Def, CHA Heart).',
   'Levels 1–20. Every D&D level equals 5 Pokémon game levels (Mudkip evolves at 16 → level 4).',
   'Ability scores = 6 + base stat ÷ 12 (max 20 before bonuses).',
   'Hero HP at level 1 = hit die + Defense modifier + base HP ÷ 5 + 10. Each level after adds an average hit die roll + Defense modifier + 1.',
@@ -126,6 +129,19 @@ export default function Account() {
             <div className="row">
               <button className="btn primary" onClick={() => run(() => exportFile(`dungeon-team-backup-${new Date().toISOString().slice(0, 10)}.json`, { kind: 'pmd-team', version: 3, state: { ...s, game: { battle: null, bsetup: s.game.bsetup } } }))}>Export whole game</button>
             </div>
+            <h3>Automatic backups</h3>
+            <p className="small muted" style={{ marginTop: 0 }}>Your device saves the whole game every 10 minutes while you have it open, one copy per day for the last 3 days.</p>
+            {autoBackups().length ? autoBackups().map(b => (
+              <div className="list-item small" key={b.day}>
+                <span className="grow"><b>{new Date(b.t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b> <span className="muted">· {b.state.chars.length} Pokémon · {LAYERS[b.state.world.layer]?.n || ''}</span></span>
+                <button className="btn sm" onClick={() => run(() => exportFile(`dungeon-team-backup-${b.day}.json`, { kind: 'pmd-team', version: 3, state: b.state }))}>Download</button>
+                <button className="btn sm" onClick={() => run(async () => {
+                  if (!(await ask(`Go back to the game as it was on ${new Date(b.t).toLocaleString()}? Everything since then is replaced.`, 'Restore'))) return;
+                  update(st => { Object.assign(st, b.state, { game: { battle: null, bsetup: b.state.game.bsetup } }); });
+                  toast('Game restored from the automatic backup.');
+                })}>Restore</button>
+              </div>
+            )) : <p className="small muted">The first copy is saved a moment after you open the app with a team.</p>}
             <h3>Import</h3>
             <label>From a file
               <input type="file" accept=".json,application/json" onChange={e => {

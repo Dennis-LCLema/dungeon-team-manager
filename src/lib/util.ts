@@ -77,3 +77,7 @@ export function readImage(file: File): Promise<string> {
     fr.readAsDataURL(file);
   });
 }
+
+/** JSON with object keys sorted, so two copies of the same data compare equal whatever order the database returns. */
+export const stable = (v: unknown) => JSON.stringify(v, (_k, x) =>
+  x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((o: Record<string, unknown>, key) => { o[key] = x[key]; return o; }, {}) : x);

@@ -1,9 +1,11 @@
 /* The game store. Shared state (synced between players) changes only through update(), which runs the
    recipe on an immer draft. Rules code reads the state with G(): inside update() that is the draft,
    otherwise the latest snapshot. Per-device UI state lives in a separate small store. */
-import { produce } from 'immer';
+import { applyPatches, enablePatches, produce, produceWithPatches, type Patch } from 'immer';
 import { useSyncExternalStore } from 'react';
-import { lsGet, lsSet, uid } from '../lib/util';
+import { lsGet, lsSet, stable, uid } from '../lib/util';
+
+enablePatches();
 import type { AttackResult, Char, Shared, User } from './types';
 
 export const LS_KEY = 'pmd-team-v3';
@@ -72,15 +74,31 @@ function persist() {
 /** Change shared state. Nested calls run inside the outer draft. */
 export function update(recipe: (s: Shared) => void) {
   if (draft) { recipe(draft); return; }
-  const next = produce(current, d => {
+  const [next, , undoPatches] = produceWithPatches(current, d => {
     draft = d;
     try { recipe(d); } finally { draft = null; }
   });
   if (next === current) return;
+  undoStack.push(undoPatches);
+  if (undoStack.length > 20) undoStack.shift();
   current = next;
   persist();
   onLocalChange?.();
   emit();
+}
+
+/* ---------- Undo (the DM's own recent changes) ---------- */
+const undoStack: Patch[][] = [];
+export const canUndo = () => undoStack.length > 0;
+/** Reverse this device's last change. Cleared whenever someone else changes the game, so it never undoes their move. */
+export function undo() {
+  const back = undoStack.pop();
+  if (!back) return;
+  try { current = applyPatches(current, back); } catch { undoStack.length = 0; toast("That change can't be undone anymore.", 'bad'); return; }
+  persist();
+  onLocalChange?.();
+  emit();
+  setUi({});
 }
 
 /** Replace shared state with data that came from the shared database (no write-back of its own). */
@@ -104,6 +122,7 @@ export function itemGains(prev: Shared, next: Shared, mine: (c: Char) => boolean
 
 export function replaceFromRemote(next: Shared) {
   const gifts = uiState.meName ? itemGains(current, next, c => owns(c)) : [];
+  if (undoStack.length && stable(next) !== stable(current)) undoStack.length = 0; // someone else changed something
   gifts.forEach(m => toast(m));
   if (gifts.length) { try { navigator.vibrate?.([80, 40, 80]); } catch { /* not supported */ } }
   current = produce(next, normalize);
@@ -210,4 +229,15 @@ export async function exportFile(name: string, obj: unknown) {
   const a = document.createElement('a');
   a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------- Automatic backups (on the DM's device) ---------- */
+export interface AutoBackup { day: string; t: number; state: Shared }
+const BACKUP_KEY = 'pmd-backups';
+export const autoBackups = (): AutoBackup[] => lsGet<AutoBackup[]>(BACKUP_KEY, []);
+/** Keep one copy per day for the last 3 days. If the browser runs out of room, the oldest copies go first. */
+export function saveBackup(state: Shared, now = Date.now()) {
+  const day = new Date(now).toISOString().slice(0, 10);
+  const list = [{ day, t: now, state }, ...autoBackups().filter(b => b.day !== day)].slice(0, 3);
+  while (list.length && !lsSet(BACKUP_KEY, list)) list.pop();
 }

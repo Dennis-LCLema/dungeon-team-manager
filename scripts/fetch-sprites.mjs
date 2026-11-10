@@ -21,9 +21,11 @@ function resolveId(map, name) {
 
 const list = (await (await fetch('https://pokeapi.co/api/v2/pokemon?limit=2000')).json()).results;
 const map = Object.fromEntries(list.map(p => [p.name, Number(p.url.split('/').filter(Boolean).pop())]));
-const dex = JSON.parse(readFileSync('public/dex.json', 'utf8')).s;
+const { s: dex, mg = {} } = JSON.parse(readFileSync('public/dex.json', 'utf8'));
 const names = {}, img = {};
 for (const sp of Object.values(dex)) { const id = resolveId(map, sp.n); if (id) names[slug(sp.n)] = id; }
+// Mega forms get their own sprite where PokéAPI has one under the same name (e.g. charizard-mega-x).
+for (const f of Object.values(mg).flat()) { const id = map[slug(f[0])]; if (id) names[slug(f[0])] = id; }
 const ids = [...new Set(Object.values(names))];
 let done = 0, failed = 0;
 for (let i = 0; i < ids.length; i += 20) {

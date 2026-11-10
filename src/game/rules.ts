@@ -3,7 +3,7 @@
 import { T, roll, rollDice, slug, toID, uid, fmt, money } from '../lib/util';
 import { CHART, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, RAR, type ItemDef } from './data';
 import { LVL_RATIO, dex, dexReady, evoLine, getEvos, getMove, getPokemonAny, type MegaForm } from './dex';
-import { G, addLog, me, setUi, toast } from './store';
+import { G, addLog, announce, me, toast } from './store';
 import type { BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
 import { BT, blog, knockout } from './battle';
 import { leaveDungeon, partyChars } from './explore';
@@ -208,12 +208,14 @@ export function changeLevel(c: Char, d: number) {
   if (d > 0) {
     const newly = c.levelMoves.filter(m => m.level > gameLvl(old) && m.level <= gameLvl(c.level) && !c.moves.some(x => x.name === m.name));
     addLog(`${nameOf(c)} reached level ${c.level}.`);
-    toast(`${nameOf(c)} reached level ${c.level}! +1 skill point.`);
-    if (newly.length) toast('Can now learn: ' + newly.map(m => T(m.name)).join(', '));
-    if (mastery(c.level) > mastery(old)) toast(`Type Mastery rank ${mastery(c.level)} unlocked!`);
+    const notes = ['+1 skill point'];
+    if (newly.length) notes.push('Can now learn: ' + newly.map(m => T(m.name)).join(', '));
+    if (mastery(c.level) > mastery(old)) notes.push(`Type Mastery rank ${mastery(c.level)} unlocked!`);
     const ready = c.evoLevel && c.level >= c.evoLevel && c.evo.targets.length;
-    if (ready && heldFx(c).noEvo) toast(`${nameOf(c)}'s Everstone stopped it from evolving.`);
-    else if (ready) evolve(c, c.evoChoice || c.evo.targets[0].name);
+    if (ready && heldFx(c).noEvo) notes.push('Its Everstone stopped it from evolving.');
+    // Shown on the owner's own device, wherever the level-up happened (often the DM's screen after a battle).
+    announce({ kind: 'level', char: c.id, name: nameOf(c), level: c.level, notes });
+    if (ready && !heldFx(c).noEvo) evolve(c, c.evoChoice || c.evo.targets[0].name);
   }
 }
 
@@ -225,10 +227,11 @@ export function evolve(c: Char, target: string) {
     c.levelMoves = p.levelMoves; c.evo = ev; c.evoLevel = defaultEvoLevel(ev); c.evoChoice = ev.targets[0]?.name || '';
     if (c.evoLevel && c.evoLevel <= c.level) c.evoLevel = c.level + 1;
     c.custom = false;
+    c.img = ''; // an uploaded picture showed the old form: back to the new species' own sprite
     c.hpCur = Math.max(1, Math.round(ratio * maxHP(c)));
     c.history.push({ from, to: T(p.species), level: c.level });
     addLog(`${c.nickname || from} evolved into ${T(p.species)}!`);
-    setUi({ evo: { from, to: T(p.species), name: c.nickname, types: [...c.types], img: c.img } });
+    announce({ kind: 'evo', char: c.id, name: c.nickname, from, to: T(p.species), species: p.species, types: [...c.types], shiny: c.shiny });
   } catch (e: any) {
     toast('Evolution failed: ' + e.message, 'bad');
   }

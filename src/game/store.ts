@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { lsGet, lsSet, stable, uid } from '../lib/util';
 
 enablePatches();
-import type { AttackResult, Char, Shared, User } from './types';
+import type { AttackResult, Char, GameEvent, Shared, User } from './types';
 
 export const LS_KEY = 'pmd-team-v3';
 const ME_KEY = 'pmd-me';
@@ -139,18 +139,24 @@ export function addLog(text: string) {
   if (s.log.entries.length > 80) s.log.entries.length = 80;
 }
 
+/** Tell every device about a level-up, an evolution or a Mega Evolution. Call inside update(). */
+export function announce(e: Omit<GameEvent, 'id' | 't'>) {
+  const g = G().game;
+  (g.events ||= []).push({ ...e, id: uid(), t: Date.now() });
+  if (g.events.length > 12) g.events.splice(0, g.events.length - 12);
+}
+
 /* ---------- Per-device UI state ---------- */
 export interface Toast { id: string; msg: string; kind?: 'bad' }
 export type Modal =
   | { kind: 'ask'; msg: string; ok: string; resolve: (v: boolean) => void }
   | { kind: 'text'; name: string; text: string };
-export interface Evo { from: string; to: string; name: string; types: string[]; img: string }
 export interface UiState {
-  tab: string; activeId: string | null; meName: string | null; busy: string; evo: Evo | null;
+  tab: string; activeId: string | null; meName: string | null; busy: string; events: GameEvent[];
   toasts: Toast[]; modal: Modal | null; seenAnn: string | null; seenHit: string | null; popup: AttackResult | null;
 }
 let uiState: UiState = {
-  tab: saved.tab || 'party', activeId: saved.activeId || null, meName: lsGet<string | null>(ME_KEY, null), busy: '', evo: null,
+  tab: saved.tab || 'party', activeId: saved.activeId || null, meName: lsGet<string | null>(ME_KEY, null), busy: '', events: [],
   toasts: [], modal: null, seenAnn: lsGet<string | null>('pmd-ann', null), seenHit: null, popup: null,
 };
 const uiListeners = new Set<() => void>();

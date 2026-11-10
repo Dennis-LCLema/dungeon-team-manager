@@ -1,12 +1,12 @@
 import { MusicPlayer } from './components/Music';
 import { useEffect, useRef, useState } from 'react';
-import { AttackPopup, Announce, EvoOverlay, Modal, Toasts } from './components/Overlays';
+import { AttackPopup, Announce, EventOverlay, Modal, Toasts } from './components/Overlays';
 import { BT, bGet, myTurnChar } from './game/battle';
 import { DataLists } from './components/Catalog';
 import { loadDex } from './game/dex';
 import { loadSpriteIds } from './game/pokeapi';
 import { migrateChars, nameOf, needsMigration } from './game/rules';
-import { G, activeChar, canUndo, isDM, me, owns, remote, saveBackup, setUi, toast, undo, update, useGame, useUi } from './game/store';
+import { G, activeChar, canUndo, charById, getUi, isDM, me, owns, remote, saveBackup, setUi, toast, undo, update, useGame, useUi } from './game/store';
 import { initSync } from './game/sync';
 import { lsSet } from './lib/util';
 import Account from './views/Account';
@@ -30,7 +30,7 @@ function toggleTheme() {
 
 function useBattleNotices() {
   const s = useGame(), ui = useUi();
-  const seen = useRef<{ battle?: string | null; prep?: string | null; turn?: string; hit?: string }>({});
+  const seen = useRef<{ battle?: string | null; prep?: string | null; turn?: string; hit?: string; events?: Set<string> }>({});
   const b = s.game.battle, dm = isDM(), signedIn = !!me();
 
   // Players jump to the Play tab when a battle starts or the DM calls the team.
@@ -67,6 +67,21 @@ function useBattleNotices() {
     if (last && last.id !== seen.current.hit) setUi({ popup: last });
     seen.current.hit = last?.id || '';
   }, [last]);
+
+  // Level-ups go to the Pokémon's owner (the DM gets a short note); evolutions and Mega Evolutions go to everyone.
+  // Skips what was already there when the page loaded, and anything more than 5 minutes old.
+  const events = s.game.events;
+  useEffect(() => {
+    const list = events || [], old = seen.current.events;
+    seen.current.events = new Set(list.map(e => e.id));
+    if (!old || !signedIn) return;
+    const fresh = list.filter(e => !old.has(e.id) && Date.now() - e.t < 5 * 60e3);
+    const show = fresh.filter(e => e.kind !== 'level' || owns(charById(e.char)));
+    if (dm) fresh.filter(e => !show.includes(e)).forEach(e => toast(`${e.name} reached level ${e.level}!`));
+    if (!show.length) return;
+    setUi({ events: [...getUi().events, ...show] });
+    try { navigator.vibrate?.([80, 40, 160]); } catch { /* not supported */ }
+  }, [events, dm, signedIn]);
 
   return ui;
 }
@@ -179,7 +194,7 @@ export default function App() {
       )}
       <Toasts />
       <Modal />
-      <EvoOverlay />
+      <EventOverlay />
       <Announce />
       <AttackPopup />
     </>

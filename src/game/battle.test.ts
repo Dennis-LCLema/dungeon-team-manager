@@ -4,7 +4,7 @@ import { rollDice } from '../lib/util';
 import { bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, startBattle } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { createChar, effectiveness, equippedOf, haggleOff, healPrice } from './rules';
+import { changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice } from './rules';
 import { G, setUi, update } from './store';
 import type { AttackResult, Char, Enemy } from './types';
 
@@ -417,5 +417,17 @@ describe('initiative re-rolls', () => {
     update(s => { s.game.battle!.phase = 'fight'; setInitRoll(heroId, 2); });
     expect(entry().r1).toBe(20);
     setUi({ meName: null });
+  });
+});
+
+describe('level-ups and evolutions', () => {
+  it('are announced to every device, and an evolution resets the picture', () => {
+    const c = createChar('Mudkip', '', 'Luis', 3);
+    c.img = 'data:old-picture';
+    update(s => { s.chars = [c]; s.game.events = []; changeLevel(s.chars[0], 1); }); // Mudkip evolves at level 4
+    const [lvl, evo] = G().game.events!;
+    expect(lvl).toMatchObject({ kind: 'level', char: c.id, level: 4 });
+    expect(evo).toMatchObject({ kind: 'evo', char: c.id, from: 'Mudkip', to: 'Marshtomp', species: 'marshtomp' });
+    expect(G().chars[0]).toMatchObject({ species: 'marshtomp', img: '' });
   });
 });

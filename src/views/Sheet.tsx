@@ -3,7 +3,7 @@ import { Avatar, HpBar, RarChip, TypeChip, Types, XpBlock, run } from '../compon
 import { ABILITY_RULES, CHART, MASTERY, STATS, TYPES } from '../game/data';
 import { dex, dexInfo, evoLine, getMove, loadInfo } from '../game/dex';
 import {
-  AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, equippedOf,
+  AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, diceFor, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
   slotOf, weaponHit,
@@ -265,11 +265,34 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
   );
 }
 
+/** One line about a move from the Pokédex: type, class, damage dice and what it does. */
+function MoveInfo({ name }: { name: string }) {
+  let m: ReturnType<typeof getMove> | null = null;
+  try { m = getMove(name); } catch { /* a custom move: nothing to show */ }
+  return m ? <span className="small muted" title={m.desc}><TypeChip t={m.type} /> {m.cls}{m.cls === 'status' ? '' : ' · ' + diceFor(m.power, m.cls)}</span> : null;
+}
+
 function Moves({ c }: { c: Char }) {
   const dm = isDM(), eq = equippedOf(c), pool = c.moves.filter(m => !c.equipped.includes(m.name));
   const learnable = c.levelMoves.filter(m => m.level <= gameLvl(c.level) && !c.moves.some(x => x.name === m.name));
-  const upcoming = c.levelMoves.filter(m => m.level > gameLvl(c.level) && !c.moves.some(x => x.name === m.name)).slice(0, 4);
+  const all = c.levelMoves.slice().sort((a, b) => a.level - b.level), wish = c.wish || [], edit = canEdit(c);
   const [mvName, setMvName] = useState('');
+  const [wishName, setWishName] = useState('');
+  const toggleWish = (n: string) => withChar(c.id, x => {
+    const w = x.wish || [], k = slug(n);
+    x.wish = w.includes(k) ? w.filter(y => y !== k) : [...w, k];
+  });
+  const addWish = () => run(() => {
+    if (!wishName.trim()) return toast('Type a move name first.', 'bad');
+    const k = getMove(wishName).name; // checks the spelling
+    if (wish.includes(k)) return toast('Already on the wishlist.', 'bad');
+    if (c.moves.some(m => m.name === k)) return toast(`${nameOf(c)} already knows ${T(k)}.`, 'bad');
+    toggleWish(k);
+    setWishName('');
+  });
+  const star = (n: string) => (edit ? (
+    <button className="btn sm ghost" aria-pressed={wish.includes(n)} aria-label={`${wish.includes(n) ? 'Remove' : 'Add'} ${T(n)} ${wish.includes(n) ? 'from' : 'to'} the wishlist`} onClick={() => toggleWish(n)}>{wish.includes(n) ? '★' : '☆'}</button>
+  ) : wish.includes(n) ? <span aria-label="On the wishlist">★</span> : null);
   const [cm, setCm] = useState({ name: '', type: 'normal', cls: 'physical' as MoveClass, dice: '2d6', pp: '', desc: '' });
   const learn = (n: string) => run(() => {
     if (!n.trim()) return toast('Type a move name first.', 'bad');
@@ -299,9 +322,38 @@ function Moves({ c }: { c: Char }) {
       {learnable.length ? <><h3>Ready to learn</h3>{learnable.map(m => (
         <div className="list-item" key={m.name}><span className="grow">{T(m.name)} <span className="small muted">Lv {appLvl(m.level)}</span></span><button className="btn sm" onClick={() => learn(m.name)}>Learn</button></div>
       ))}</> : null}
-      {upcoming.length ? <><h3>Coming up</h3>{upcoming.map(m => (
-        <div className="list-item small" key={m.name}><span className="grow">{T(m.name)}</span><span className="muted mono">Lv {appLvl(m.level)}</span></div>
-      ))}</> : null}
+      {all.length ? (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Every move {T(c.species)} learns ({all.length})</summary>
+          <p className="small muted" style={{ margin: '6px 0' }}>Tap ☆ to put a move on the wishlist.</p>
+          {all.map(m => {
+            const has = c.moves.some(x => x.name === m.name), ok = m.level <= gameLvl(c.level);
+            return (
+              <div className="list-item small" key={m.name + m.level}>
+                <span className="muted mono" style={{ minWidth: 44 }}>Lv {appLvl(m.level)}</span>
+                <span className="grow"><b>{T(m.name)}</b> <MoveInfo name={m.name} /></span>
+                {has ? <span className="tag good">Known</span> : ok ? <span className="tag">Ready</span> : null}
+                {has ? null : star(m.name)}
+              </div>
+            );
+          })}
+        </details>
+      ) : null}
+      <h3>Wishlist{wish.length ? ` (${wish.length})` : ''}</h3>
+      {wish.length ? wish.map(n => (
+        <div className="list-item small" key={n}>
+          <span className="grow"><b>{T(n)}</b> <MoveInfo name={n} />
+            {c.levelMoves.some(m => m.name === n) ? <span className="muted"> · Lv {appLvl(c.levelMoves.find(m => m.name === n)!.level)}</span> : <span className="muted"> · TM or tutor</span>}</span>
+          {dm && !c.moves.some(m => m.name === n) ? <button className="btn sm" onClick={() => { learn(n); toggleWish(n); }}>Teach</button> : null}
+          {edit ? <button className="btn sm ghost danger" aria-label={`Remove ${T(n)} from the wishlist`} onClick={() => toggleWish(n)}>✕</button> : null}
+        </div>
+      )) : <p className="small muted">{edit ? 'Moves you hope to learn go here, so the DM can see them.' : 'Nothing on the wishlist yet.'}</p>}
+      {edit ? (
+        <form className="row" onSubmit={e => { e.preventDefault(); addWish(); }}>
+          <input list="moveList" autoComplete="off" placeholder="Wish for any move, e.g. Surf" aria-label="Move to add to the wishlist" style={{ flex: 1 }} value={wishName} onChange={e => setWishName(e.target.value)} />
+          <button className="btn" type="submit">Add to wishlist</button>
+        </form>
+      ) : null}
       {dm ? <>
         <h3>Teach any move</h3>
         <div className="row"><input list="moveList" autoComplete="off" placeholder="e.g. Flamethrower (TM, tutor, egg move)" style={{ flex: 1 }} value={mvName} onChange={e => setMvName(e.target.value)} />

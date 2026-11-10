@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, sideOf, startBattle, toHit } from '../game/battle';
+import { autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
@@ -115,6 +115,29 @@ function Setup() {
 
 const ord = (n: number) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
 
+/** One fighter's initiative dice: they tumble through random faces, then land on the real roll and show the total. */
+function InitRoll({ o, delay }: { o: OrderEntry; delay: number }) {
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [face, setFace] = useState<number[] | null>(still ? null : [roll(20), roll(20)]);
+  const [wait] = useState(delay); // keep the first delay, so a re-sorted list doesn't re-roll everyone
+  useEffect(() => {
+    if (still) return;
+    const t0 = Date.now(), id = setInterval(() => {
+      const done = Date.now() - t0 >= wait + 900;
+      setFace(done ? null : [roll(20), roll(20)]);
+      if (done) clearInterval(id);
+    }, 70);
+    return () => clearInterval(id);
+  }, [o.r1, o.r2, wait, still]);
+  const dice = (face || [o.r1, o.r2]).slice(0, o.r2 != null ? 2 : 1);
+  return (
+    <span className="mono small initroll">
+      {dice.map((n, i) => <span key={i} className={`die ${face ? 'rolling' : 'landed'}`}>{n ?? '?'}</span>)}
+      {face ? null : <span>{o.mod != null ? fmt(o.mod) : ''} = <b>{o.init}</b></span>}
+    </span>
+  );
+}
+
 function Intro({ b }: { b: Battle }) {
   const dm = isDM();
   const mine = b.order.map((o, i) => [o, i] as const).filter(([o]) => o.ref === 'pc' && owns(bGet(o) as Char));
@@ -136,7 +159,12 @@ function Intro({ b }: { b: Battle }) {
             <li key={o.id} className={`${sideOf(o) === 'enemy' ? 'foe' : ''} ${o.ref === 'pc' && owns(x as Char) ? 'me' : ''}`} style={{ '--d': i * 0.18 + 's' } as React.CSSProperties}>
               <span className="ipos">{i + 1}</span><Avatar c={x} size={30} />
               <span className="grow"><b>{nameOf(x)}</b> <span className="small muted">{sideOf(o) === 'enemy' ? 'Foe' : 'Team'}</span></span>
-              <span className="mono small">{o.r2 != null ? `d20 [${o.r1}, ${o.r2}]` : `d20 ${o.r1 ?? '?'}`} {o.mod != null ? fmt(o.mod) : ''} = <b>{o.init}</b></span>
+              <InitRoll o={o} delay={i * 180} />
+              {dm ? (
+                <input type="number" min={1} max={20} className="initedit" key={o.r1} defaultValue={o.r1} title="Type the d20 they rolled with their own dice" aria-label={`d20 that ${nameOf(x)} rolled`}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  onBlur={e => { const v = Math.round(+e.target.value); if (v >= 1 && v <= 20 && v !== o.r1) update(() => setInitRoll(o.id, v)); else e.target.value = String(o.r1); }} />
+              ) : null}
             </li>
           );
         })}
@@ -150,7 +178,7 @@ function Intro({ b }: { b: Battle }) {
             blog('The battle begins!');
             if (isOut(bGet(bb.order[bb.turn]))) nextTurn();
           })}>Begin battle</button>
-          <span className="small muted">Give players a moment to plan.</span>
+          <span className="small muted">Someone re-rolled with their own dice? Type their d20 in the box next to their name.</span>
         </div>
       ) : <p className="small muted" style={{ margin: '10px 0 0' }}>Plan your moves. Dennis will start the fight.</p>}
     </div>
@@ -185,7 +213,9 @@ function TurnPanel({ b }: { b: Battle }) {
   };
   const target = (s: Shared) => { const o = s.game.battle!.order.find(x => x.id === tgtId); return o ? bGet(o) : null; };
 
-  const fire = (i: number, manual?: { d20: number; dmg?: number }) => onTurn((_bb, c0, a) => {
+  // Only the DM can type in dice a player rolled by hand, so hits and crits can't be made up.
+  const fire = (i: number, typed?: { d20: number; dmg?: number }) => onTurn((_bb, c0, a) => {
+    const manual = isDM() ? typed : undefined;
     const mv = (c0.ref === 'pc' ? equippedOf(a as Char) : a.moves)[i], t = target(G());
     if (!mv) return;
     if (!t) { toast('No target.', 'bad'); return; }
@@ -263,9 +293,9 @@ function TurnPanel({ b }: { b: Battle }) {
       </label>
       <div className="row between" style={{ marginBottom: 6 }}>
         <span className="small muted" style={{ fontWeight: 600 }}>2. Pick a move</span>
-        {isPc ? (
+        {isPc && dm ? (
           <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }}>
-            <input type="checkbox" checked={own} onChange={e => { setOwn(e.target.checked); setOwnMove(null); }} /> Roll my own dice
+            <input type="checkbox" checked={own} onChange={e => { setOwn(e.target.checked); setOwnMove(null); }} /> Type in the player's own dice
           </label>
         ) : null}
       </div>

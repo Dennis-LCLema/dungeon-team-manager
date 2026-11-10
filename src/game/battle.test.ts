@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { bGet, buildEnemy, nextTurn, resolveMove, startBattle } from './battle';
+import { bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, startBattle } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
 import { createChar, effectiveness, equippedOf, haggleOff, healPrice } from './rules';
-import { G, update } from './store';
+import { G, setUi, update } from './store';
 import type { AttackResult, Char, Enemy } from './types';
 
 beforeAll(() => { setDex(JSON.parse(readFileSync('public/dex.json', 'utf8'))); });
@@ -398,5 +398,24 @@ describe('status moves', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     update(s => { const hero = s.chars.find(c => c.id === heroId)!, foe = s.game.battle!.enemies.find(e => e.id === foeId)!; r = resolveMove(foe, { ...(wave as object), name: 'will-o-wisp', type: 'fire' } as never, hero); });
     expect(r!.save).toMatch(/can't be burned/);
+  });
+});
+
+describe('initiative re-rolls', () => {
+  it('lets only the DM type a new d20, and only before the fight begins', () => {
+    const { heroId } = duel();
+    const entry = () => G().game.battle!.order.find(o => o.id === heroId)!;
+    update(s => { s.game.battle!.phase = 'intro'; });
+    setUi({ meName: 'Luis' });
+    const before = entry().init;
+    update(() => setInitRoll(heroId, 20));
+    expect(entry().init).toBe(before); // a player can't
+    setUi({ meName: 'Dennis' });
+    update(() => setInitRoll(heroId, 20));
+    expect(entry()).toMatchObject({ r1: 20, r2: null, init: 20 + entry().mod });
+    expect(G().game.battle!.order[0].id).toBe(heroId); // the order re-sorts (a hero wins ties)
+    update(s => { s.game.battle!.phase = 'fight'; setInitRoll(heroId, 2); });
+    expect(entry().r1).toBe(20);
+    setUi({ meName: null });
   });
 });

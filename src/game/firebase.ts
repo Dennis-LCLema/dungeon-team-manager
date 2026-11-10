@@ -46,6 +46,12 @@ export async function firebaseDb(code: string) {
   try { store = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
   catch { store = fs.getFirestore(app); /* private browsing: no device cache */ }
   const root = `games/${code}`;
+  // A phone that was locked can sit on a dead connection for a long time. Reconnect as soon as the app is back on screen.
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (Date.now() - hiddenAt > 15000) void fs.disableNetwork(store).then(() => fs.enableNetwork(store));
+  });
   const wrap = (ref: ReturnType<typeof fs.doc>) => ({
     onSnapshot: (cb: (s: Snap) => void, err: (e: unknown) => void) => fs.onSnapshot(ref, s => cb({ exists: s.exists(), data: () => s.data() }), err),
     set: (d: object) => fs.setDoc(ref, d),
@@ -53,6 +59,14 @@ export async function firebaseDb(code: string) {
   });
   return {
     doc: (path: string) => wrap(fs.doc(store, `${root}/${path}`)),
+    /** All-or-nothing write. Nothing is written unless the guard document is still at the given revision;
+        if it moved on, the newer document comes back instead of null. Fails (rather than queueing) with no connection. */
+    commit: (writes: { path: string; body: object | null }[], guard: { path: string; rev: number }) => fs.runTransaction(store, async tx => {
+      const cur = (await tx.get(fs.doc(store, `${root}/${guard.path}`))).data();
+      if ((cur?.rev || 0) !== guard.rev) return cur || {};
+      writes.forEach(w => { const ref = fs.doc(store, `${root}/${w.path}`); if (w.body) tx.set(ref, w.body); else tx.delete(ref); });
+      return null;
+    }),
     collection: (name: string) => ({
       onSnapshot: (cb: (s: { docs: Snap[] }) => void, err: (e: unknown) => void) =>
         fs.onSnapshot(fs.collection(store, `${root}/${name}`), s => cb({ docs: s.docs.map(d => ({ exists: true, data: () => d.data() })) }), err),

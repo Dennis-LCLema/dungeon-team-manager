@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { TCOL } from '../game/data';
-import { setUi, toast, useGame, useUi } from '../game/store';
-import { TypeChip, run } from './common';
+import { spriteUrl } from '../game/pokeapi';
+import { charById, getUi, setUi, toast, useGame, useUi } from '../game/store';
+import type { Fighter } from '../game/types';
+import { Avatar, TypeChip, run } from './common';
 
 export function Toasts() {
   const { toasts } = useUi();
@@ -49,20 +50,24 @@ export function Modal() {
   );
 }
 
-export function EvoOverlay() {
-  const { evo } = useUi();
-  if (!evo) return null;
-  const a = TCOL[evo.types[0]] || '#888', b = TCOL[evo.types[1] || evo.types[0]] || a;
-  const close = () => setUi({ evo: null });
+/** Level-ups (on the owner's device), evolutions and Mega Evolutions (on everyone's), one at a time. */
+export function EventOverlay() {
+  const e = useUi().events[0];
+  useGame();
+  if (!e) return null;
+  const close = () => setUi({ events: getUi().events.slice(1) });
+  const who = e.name || e.from, live = charById(e.char);
+  const face = e.kind === 'level' && live ? live
+    : { id: e.char, species: (e.form && spriteUrl(e.form) ? e.form : e.species) || '', types: e.types || [], shiny: e.shiny, megaOn: e.kind === 'mega' ? 0 : null } as Fighter;
   return (
-    <div className="overlay" onClick={e => { if (e.target === e.currentTarget) close(); }}>
+    <div className="overlay" key={e.id} onClick={ev => { if (ev.target === ev.currentTarget) close(); }}>
       <div className="evobox" role="dialog" aria-modal="true">
-        <div className="small muted">What? {evo.name || evo.from} is evolving!</div>
-        <div className="evoorb" style={{ background: `linear-gradient(135deg,${a},${b})` }}>
-          {evo.img ? <img src={evo.img} alt="" style={{ width: '80%', height: '80%', objectFit: 'contain' }} /> : evo.to[0]}
-        </div>
-        <h2>{evo.name || evo.from} evolved into {evo.to}!</h2>
-        <div className="row" style={{ justifyContent: 'center', gap: 4, marginBottom: 14 }}>{evo.types.map(t => <TypeChip key={t} t={t} />)}</div>
+        <div className="small muted">{e.kind === 'level' ? 'Level up!' : e.kind === 'mega' ? `${who} is reacting to its Mega Stone!` : `What? ${who} is evolving!`}</div>
+        <div className="evoface"><Avatar c={face} size={120} />{e.kind === 'level' ? <b className="lvlbadge">Lv {e.level}</b> : null}</div>
+        <h2>{e.kind === 'level' ? `${who} reached level ${e.level}!` : e.kind === 'mega' ? `${who} Mega Evolved into ${e.to}!` : `${who} evolved into ${e.to}!`}</h2>
+        {e.kind === 'level'
+          ? <ul className="small" style={{ textAlign: 'left', margin: '0 0 14px', paddingLeft: 20 }}>{(e.notes || []).map(n => <li key={n}>{n}</li>)}</ul>
+          : <div className="row" style={{ justifyContent: 'center', gap: 4, marginBottom: 14 }}>{(e.types || []).map(t => <TypeChip key={t} t={t} />)}</div>}
         <button className="btn primary" autoFocus onClick={close}>Awesome</button>
       </div>
     </div>

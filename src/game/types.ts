@@ -31,6 +31,8 @@ export interface Char extends Mon {
   inDungeon: boolean; img: string; hpv?: number; xp?: number; createdAt?: number; custom?: boolean; tree: Tree;
   megaForm?: number; megaReady?: boolean; mega?: { state: 'draft' | 'pending' | 'active' | 'passed'; trial: string; by?: string };
   blessings?: number; friend?: number;
+  /** Moves the player hopes to learn (slugs), for the DM to see. */
+  wish?: string[];
   /** Chosen preset ability (slug). Defaults to the first in `abilities`. */
   ability?: string;
   /** Player-made ability. Once the DM approves it, it replaces the preset one. */
@@ -70,6 +72,12 @@ export interface Battle {
   bg?: string; scene?: number;
 }
 
+/** Something every device shows once: a level-up (to its owner), an evolution or a Mega Evolution (to everyone). */
+export interface GameEvent {
+  id: string; t: number; kind: 'level' | 'evo' | 'mega'; char: string; name: string; level?: number; notes?: string[];
+  from?: string; to?: string; species?: string; form?: string; types?: string[]; shiny?: boolean;
+}
+
 export interface LootLine {
   id: string; kind: 'item' | 'money'; itemId?: string; tm?: string; name?: string; r?: string; desc?: string; qty?: number;
   money?: number; src: string; roll: string; to: string; why: string; price?: number; sold?: boolean; special?: boolean;
@@ -101,7 +109,7 @@ export interface LogEntry { id: string; t: number; who: string; text: string }
 
 export interface Shared {
   chars: Char[];
-  game: { battle: Battle | null; bsetup: { pcs: string[]; enemies: Enemy[] } };
+  game: { battle: Battle | null; bsetup: { pcs: string[]; enemies: Enemy[] }; events?: GameEvent[] };
   dungeon: Dungeon;
   loot: { lines: LootLine[] };
   rules: { difficulty: string };

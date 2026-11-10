@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { LIGHT_TYPES, RAR, TCOL } from '../game/data';
-import { MAX_LEVEL, levelCap, nameOf, typesOf, xpNeed } from '../game/rules';
+import { MAX_LEVEL, levelCap, megaOf, nameOf, typesOf, xpNeed } from '../game/rules';
 import { toast } from '../game/store';
 import type { Char, Fighter } from '../game/types';
 import { spriteUrl } from '../game/pokeapi';
@@ -25,12 +25,14 @@ export function Avatar({ c, size = 48 }: { c: Fighter; size?: number }) {
   const t = typesOf(c), a = TCOL[t[0]] || '#888', b = TCOL[t[1] || t[0]] || a;
   const sh = c.shiny ? <span className="shiny-dot" title="Shiny" aria-label="Shiny">✨</span> : null;
   const [broken, setBroken] = useState('');
-  const api = c.img ? null : spriteUrl(c.species, c.shiny), px = api && broken !== api ? api : null;
-  if (c.img || px || hasSprite(c.species)) {
+  // A Mega Evolved Pokémon shows its Mega form's sprite, when the app has one.
+  const mega = c.megaOn != null ? spriteUrl(megaOf(c)?.[0] || '', c.shiny) : null, own = mega ? '' : c.img;
+  const api = own ? null : mega || spriteUrl(c.species, c.shiny), px = api && broken !== api ? api : null;
+  if (own || px || hasSprite(c.species)) {
     return (
       <div className="avatar-w">{sh}
         <div className={`avatar pic ${c.megaOn != null ? 'is-mega' : ''}`} style={{ width: size, height: size, background: `linear-gradient(135deg,${a}40,${b}40)` }}>
-          {c.img ? <img src={c.img} alt="" />
+          {own ? <img src={own} alt="" />
             : px ? <img className="px" src={px} alt="" onError={() => setBroken(px)} />
             : <Sprite species={c.species} size={Math.round(size * 0.86)} />}
         </div>

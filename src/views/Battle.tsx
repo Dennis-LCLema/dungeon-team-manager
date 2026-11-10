@@ -4,9 +4,9 @@ import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../gam
 import { autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
-import { G, addLog, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
+import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
 import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared, Status } from '../game/types';
-import { T, fmt, roll, uid } from '../lib/util';
+import { T, fmt, roll, slug, uid } from '../lib/util';
 
 /** Run a turn action for whoever is acting now, inside update(). */
 function onTurn(fn: (b: Battle, cur: OrderEntry, actor: Fighter, s: Shared) => void) {
@@ -280,6 +280,7 @@ function TurnPanel({ b }: { b: Battle }) {
     bb.megaUsed[x.id] = true;
     blog(`${before} is reacting to its ${f[4] || 'Mega Stone'}! ${before} Mega Evolved into ${fmtMega(f[0])}!`);
     addLog(`${before} Mega Evolved!`);
+    announce({ kind: 'mega', char: x.id, name: before, to: fmtMega(f[0]), species: x.species, form: slug(f[0]), types: f[1], shiny: x.shiny });
     toast(`${before} Mega Evolved! Now pick a move.`);
   });
 

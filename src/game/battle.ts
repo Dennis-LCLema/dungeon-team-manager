@@ -1,5 +1,5 @@
 /* Battle engine. State-changing functions run inside update(). */
-import { T, fmt, roll, rollDice, uid } from '../lib/util';
+import { T, clampN, fmt, roll, rollDice, uid } from '../lib/util';
 import { CAST, LAYERS, STATUS, STATUS_MOVES, STATUS_SAVE, SURPRISE } from './data';
 import { getMove, getPokemonAny, prevoOf } from './dex';
 import { G, addLog, canEdit, isDM, owns } from './store';
@@ -63,6 +63,19 @@ export function rollSurprise(party: Fighter[], enemies: Enemy[]) {
   return { kind, text: `Team awareness ${team} vs foes' stealth ${foes}.` };
 }
 
+const byInit = (p: OrderEntry, q: OrderEntry) => q.init - p.init || Number(q.ref === 'pc') - Number(p.ref === 'pc');
+
+/** The DM types the d20 a player rolled with their own dice. Works until the fight begins; the turn order re-sorts. */
+export function setInitRoll(id: string, d20: number) {
+  const b = BT(), o = b?.order.find(x => x.id === id), x = bGet(o);
+  if (!b || !o || !x || b.phase !== 'intro' || !isDM()) return;
+  o.r1 = clampN(Math.round(d20) || 1, 1, 20);
+  o.r2 = null;
+  o.init = o.r1 + o.mod;
+  b.order.sort(byInit);
+  blog(`${nameOf(x)} re-rolled initiative with their own dice: ${o.r1}${fmt(o.mod)} = ${o.init}.`);
+}
+
 export function startBattle(pcIds: string[], enemiesIn: Enemy[], room: Battle['room'], surprise: string, why?: string) {
   const s = G();
   const pcs = pcIds.map(id => s.chars.find(x => x.id === id)).filter(Boolean) as Char[];
@@ -71,7 +84,7 @@ export function startBattle(pcIds: string[], enemiesIn: Enemy[], room: Battle['r
   const order: OrderEntry[] = [
     ...pcs.map(x => Object.assign({ ref: 'pc' as const, id: x.id }, initRoll(x, true, sp))),
     ...enemies.map(e => Object.assign({ ref: 'enemy' as const, id: e.id }, initRoll(e, e.side === 'npc', sp))),
-  ].sort((p, q) => q.init - p.init || Number(q.ref === 'pc') - Number(p.ref === 'pc'));
+  ].sort(byInit);
   s.chars.forEach(x => { x.megaOn = null; });
   const { bg, scene } = battleBackground(s, room);
   s.game.battle = { id: uid(), phase: 'intro', surprise: sp, why: why || '', round: 1, turn: 0, order, enemies, log: [], result: null, room: room || null, boost: {}, megaUsed: {}, flags: {}, bg, scene };

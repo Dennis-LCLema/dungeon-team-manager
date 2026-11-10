@@ -622,8 +622,11 @@ export default function Sheet() {
             <button className="btn" onClick={() => hp(-1)}>Damage</button>
             <button className="btn" onClick={() => hp(1)}>Heal</button>
             <span style={{ flex: 1 }} />
-            <button className="btn sm" onClick={() => { const h = shortRestHeal(c); withChar(c.id, x => { x.hpCur += h; clampHP(x); }); toast(`Short rest: healed ${h} HP.`); }}>Short rest</button>
-            <button className="btn sm primary" onClick={() => { withChar(c.id, x => { longRest(x); addLog(`${nameOf(x)} took a long rest.`); }); toast('Long rest: HP, PP and assists restored.'); }}>Long rest</button>
+            {/* Only the DM decides when the team rests. */}
+            {dm ? <>
+              <button className="btn sm" onClick={() => { const h = shortRestHeal(c); withChar(c.id, x => { x.hpCur += h; clampHP(x); }); toast(`Short rest: healed ${h} HP.`); }}>Short rest</button>
+              <button className="btn sm primary" onClick={() => { withChar(c.id, x => { longRest(x); addLog(`${nameOf(x)} took a long rest.`); }); toast('Long rest: HP, PP and assists restored.'); }}>Long rest</button>
+            </> : null}
           </div>
           {canEdit(c) ? <AbilityChecks c={c} /> : null}
           <div className="grid3" style={{ marginTop: 12 }}>

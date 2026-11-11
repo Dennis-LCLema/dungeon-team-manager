@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Avatar, HpBar, RarChip, TypeChip, Types, XpBlock, run } from '../components/common';
-import { ABILITY_FX, ABILITY_RULES, CHART, MASTERY, STATS, STATUS, TREE_FX, TYPES } from '../game/data';
+import { Avatar, HpBar, InCharacter, RarChip, TypeChip, Types, XpBlock, run } from '../components/common';
+import { ABILITY_FX, ABILITY_RULES, CHART, DEMEANORS, MASTERY, NATURES, QUIZ, STATS, STATUS, STORY_Q, TREE_FX, TYPES } from '../game/data';
 import { dex, dexInfo, evoLine, getMove, loadInfo } from '../game/dex';
 import {
   AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, diceFor, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
-  slotOf, weaponHit, abilityFxText,
+  slotOf, weaponHit, abilityFxText, lockScores, natureText, quizResult, rollScores,
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
@@ -500,6 +500,131 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
   );
 }
 
+/** One-time stat roll: six scores were rolled when the Pokémon was made. Its player places them, then they lock for good. */
+function StatRoll({ c }: { c: Char }) {
+  const dm = isDM();
+  const [at, setAt] = useState<Record<string, string>>({});
+  if (c.scores) return null;
+  const rolls = c.rolled;
+  if (!rolls) return dm ? (
+    <section className="card callout row between">
+      <span><b>🎲 Stat roll</b> <span className="small muted">This Pokémon was made before stat rolls. Roll six scores for its player to place.</span></span>
+      <button className="btn primary" onClick={() => withChar(c.id, x => { x.rolled = rollScores(); addLog(`Dennis rolled stats for ${nameOf(x)}: ${x.rolled.join(', ')}.`); })}>Roll stats</button>
+    </section>
+  ) : null;
+  const used = Object.values(at).filter(Boolean), slots: [string, string][] = [...STATS.map(([k, l, d]) => [k, `${l} (${d})`] as [string, string]), ['heart', 'Heart (CHA)']];
+  const lock = () => run(async () => {
+    if (!(await ask(`Lock in these stats for ${nameOf(c)}? They can't be changed afterwards.`, 'Lock in'))) return;
+    update(s => { const x = s.chars.find(y => y.id === c.id); if (x && canEdit(x)) lockScores(x, Object.fromEntries(Object.entries(at).map(([k, v]) => [k, +v]))); });
+    toast('Stats locked in.');
+  });
+  return (
+    <section className="card callout">
+      <h2 style={{ marginTop: 0 }}>🎲 Your stat rolls</h2>
+      <p className="small" style={{ margin: '0 0 8px' }}>The dice rolled these six scores. Put one in each stat, highest where you want to be strongest. This is a one-time choice.</p>
+      <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+        {rolls.map((n, i) => <span key={i} className={`tag ${used.includes(String(i)) ? '' : 'good'}`} style={{ fontSize: 15 }}>{n}</span>)}
+      </div>
+      <div className="grid3">
+        {slots.map(([k, label]) => (
+          <label key={k}>{label}
+            <select value={at[k] || ''} onChange={e => setAt({ ...at, [k]: e.target.value })}>
+              <option value="">Choose…</option>
+              {rolls.map((n, i) => (at[k] === String(i) || !used.includes(String(i)) ? <option key={i} value={i}>{n} ({fmt(Math.floor((n - 10) / 2))})</option> : null))}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="btn primary" disabled={used.length < 6} onClick={lock}>Lock in my stats</button>
+        <button className="btn ghost" disabled={!used.length} onClick={() => setAt({})}>Start over</button>
+      </div>
+    </section>
+  );
+}
+
+/** Approve a personality, or send its player back to the quiz (sheet and DM tools). */
+export function PersonaDmButtons({ c }: { c: Char }) {
+  const set = (ok: boolean) => run(() => update(s => {
+    const x = s.chars.find(y => y.id === c.id);
+    if (!x?.persona || !isDM()) return;
+    if (ok) { x.persona.ok = true; addLog(`Dennis approved ${nameOf(x)}'s personality: ${DEMEANORS[x.persona.demeanor]?.n}, ${natureText(x.persona.nature)}.`); }
+    else { delete x.persona; addLog(`Dennis asked ${nameOf(x)}'s player to redo the personality quiz.`); }
+    clampHP(x);
+  }));
+  return <div className="row" style={{ gap: 6 }}><button className="btn sm primary" onClick={() => set(true)}>Approve</button><button className="btn sm" onClick={() => set(false)}>Ask to redo</button></div>;
+}
+
+/** Personality: an 8-question quiz gives a nature (a small stat boost) and a demeanor to roleplay. The DM approves the result. */
+function PersonaCard({ c }: { c: Char }) {
+  const dm = isDM(), p = c.persona;
+  const [ans, setAns] = useState<number[] | null>(null);
+  const [pick, setPick] = useState({ nature: 'hardy', demeanor: 'steady' });
+  const [story, setStory] = useState(['', '', '']);
+  if (p?.ok) return (
+    <section className="card">
+      <InCharacter c={c} />
+      {dm ? <button className="btn sm ghost" onClick={() => withChar(c.id, x => { delete x.persona; clampHP(x); })}>Redo the quiz</button> : null}
+    </section>
+  );
+  if (p) return (
+    <section className="card callout">
+      <h2 style={{ marginTop: 0 }}>Personality</h2>
+      <p className="small" style={{ margin: '0 0 4px' }}><b>Waiting for Dennis:</b> {DEMEANORS[p.demeanor]?.n} {DEMEANORS[p.demeanor]?.g}, {natureText(p.nature)}</p>
+      <p className="small muted" style={{ margin: '0 0 8px' }}>{DEMEANORS[p.demeanor]?.rule}</p>
+      {dm ? <PersonaDmButtons c={c} /> : null}
+    </section>
+  );
+  if (!ans) return (
+    <section className="card callout row between">
+      <span><b>🎭 Who is {nameOf(c)}?</b> <span className="small muted">{QUIZ.length} quick questions give your Pokémon a nature (a small stat boost) and a demeanor to play.</span></span>
+      <button className="btn primary" onClick={() => setAns([])}>Take the quiz</button>
+    </section>
+  );
+  const q = QUIZ[ans.length];
+  if (q) return (
+    <section className="card callout">
+      <div className="small muted">Question {ans.length + 1} of {QUIZ.length}</div>
+      <h2 style={{ margin: '4px 0 10px' }}>{q.q}</h2>
+      <div className="quiz">
+        {q.a.map((o, i) => <button key={i} className="btn" onClick={() => { const next = [...ans, i]; setAns(next); if (next.length === QUIZ.length) setPick(quizResult(next)); }}>{o.t}</button>)}
+      </div>
+      {ans.length ? <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => setAns(ans.slice(0, -1))}>← Back</button> : null}
+    </section>
+  );
+  const d = DEMEANORS[pick.demeanor];
+  const send = () => {
+    withChar(c.id, x => {
+      x.persona = { ...pick };
+      const lines = STORY_Q.map((sq, i) => (story[i].trim() ? `${sq} ${story[i].trim()}` : '')).filter(Boolean);
+      if (lines.length) x.notes = [x.notes, 'Backstory', ...lines].filter(Boolean).join('\n');
+      addLog(`${nameOf(x)} finished the personality quiz.`);
+    });
+    toast('Sent to Dennis for approval.');
+  };
+  return (
+    <section className="card callout">
+      <h2 style={{ marginTop: 0 }}>{nameOf(c)} is {d.n} {d.g}</h2>
+      <p className="small" style={{ margin: '0 0 8px' }}>{d.rule}</p>
+      <div className="grid2 stack">
+        <label>Demeanor
+          <select value={pick.demeanor} onChange={e => setPick({ ...pick, demeanor: e.target.value })}>{Object.entries(DEMEANORS).map(([k, v]) => <option key={k} value={k}>{v.g} {v.n}</option>)}</select>
+        </label>
+        <label>Nature
+          <select value={pick.nature} onChange={e => setPick({ ...pick, nature: e.target.value })}>{Object.keys(NATURES).map(n => <option key={n} value={n}>{natureText(n)}</option>)}</select>
+        </label>
+      </div>
+      <p className="small muted" style={{ margin: '6px 0' }}>The quiz picked these. Change them if they don't feel right. Dennis approves the result.</p>
+      <h3>Backstory (optional, saved to your Notes)</h3>
+      {STORY_Q.map((sq, i) => <label key={i} style={{ marginBottom: 6 }}>{sq}<input value={story[i]} maxLength={200} onChange={e => setStory(story.map((v, j) => (j === i ? e.target.value : v)))} /></label>)}
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn primary" onClick={send}>Send to Dennis</button>
+        <button className="btn ghost" onClick={() => setAns([])}>Retake the quiz</button>
+      </div>
+    </section>
+  );
+}
+
 /** Approve or reject a player's own skill-tree entry (sheet and DM tools). */
 export function TreePropButtons({ c, b, i }: { c: Char; b: Branch; i: number }) {
   const set = (ok: boolean) => run(() => update(s => {
@@ -740,6 +865,9 @@ export default function Sheet() {
           ) : null}
         </section>
 
+        <StatRoll key={'roll:' + c.id} c={c} />
+        <PersonaCard key={'persona:' + c.id + (c.persona ? (c.persona.ok ? 'ok' : 'wait') : '')} c={c} />
+
         <section className="card">
           <div className="row between"><h2 style={{ margin: 0 }}>HP <span className="mono">{c.hpCur} / {max}</span></h2><span className="small muted">Hit die d{hitDie(c)}</span></div>
           <div style={{ margin: '8px 0' }}><HpBar cur={c.hpCur} max={max} /></div>
@@ -787,7 +915,7 @@ export default function Sheet() {
               </div>
             </div>
           </fieldset>
-          <p className="small muted" style={{ margin: '8px 0 0' }}>Scores come from the Pokémon's base stats.{dm ? ' The box under each is a bonus for feats or items.' : ''} Heart is used to purify Shadow Pokémon.</p>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>{c.scores ? 'Scores were rolled and locked in.' : "Scores come from the Pokémon's base stats until its rolled stats are locked in."}{c.persona?.ok ? ' The modifiers include its nature.' : ''}{dm ? ' The box under each is a bonus for feats or items.' : ''} Heart is used to purify Shadow Pokémon.</p>
         </details>
 
         <Assists c={c} />

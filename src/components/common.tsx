@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { LIGHT_TYPES, RAR, TCOL } from '../game/data';
-import { MAX_LEVEL, levelCap, megaOf, nameOf, typesOf, xpNeed } from '../game/rules';
-import { toast } from '../game/store';
+import { DEMEANORS, LIGHT_TYPES, RAR, TCOL } from '../game/data';
+import { MAX_LEVEL, levelCap, megaOf, nameOf, natureText, typesOf, xpNeed } from '../game/rules';
+import { addLog, isDM, toast, update } from '../game/store';
 import type { Char, Fighter } from '../game/types';
 import { spriteUrl } from '../game/pokeapi';
 import { Sprite, hasSprite } from './sprites';
@@ -80,4 +80,24 @@ export const Card = ({ className = '', children, ...rest }: { className?: string
 
 export function Callout({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return <section className="card callout row between">{children}{action}</section>;
+}
+
+/** The "stay in character" card: demeanor, nature and Inspiration. Shown wherever the team meets someone. The DM hands out Inspiration here. */
+export function InCharacter({ c }: { c: Char }) {
+  const p = c.persona, d = p?.ok ? DEMEANORS[p.demeanor] : null;
+  if (!p || !d) return null;
+  const give = () => update(s => {
+    const x = s.chars.find(y => y.id === c.id);
+    if (!x || !isDM()) return;
+    x.inspired = true;
+    addLog(`${nameOf(x)} stayed in character and earned Inspiration.`);
+  });
+  return (
+    <div className="banner">
+      <div><b>🎭 {nameOf(c)} is {d.n} {d.g}</b> <span className="small muted">{natureText(p.nature)}</span></div>
+      <div className="small" style={{ marginTop: 2 }}>{d.rule}</div>
+      {c.inspired ? <div className="small" style={{ marginTop: 4 }}><b>⭐ Inspired:</b> advantage on the next attack.</div>
+        : isDM() ? <button className="btn sm" style={{ marginTop: 6 }} onClick={give}>⭐ Stayed in character</button> : null}
+    </div>
+  );
 }

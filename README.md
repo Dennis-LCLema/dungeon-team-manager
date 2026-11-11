@@ -17,6 +17,8 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 📱 A **Play** screen that shows what's happening right now, and buzzes when it's your turn
 - 🎲 **Hit and miss popups** with the roll, the damage and type effectiveness, on every screen at once
 - 🎯 **Roll your own dice**: type your d20 and damage roll, and the app adds your bonuses
+- 🎲 **Rolled stats**: six scores are rolled when a Pokémon is made (4d6, drop the lowest); its player places them once and they lock for good
+- 🎭 **Personality quiz**: 8 questions give a nature (a small stat boost) and a demeanor to roleplay. An "in character" card shows it whenever the team meets someone, and the DM rewards good roleplay with Inspiration
 - 🧬 Character sheets with moves, PP, a 3-branch skill tree, held items, evolution and Mega Trials
 - ✨ **Preset abilities** that work in battle (Sturdy, Flash Fire, Prankster…), plus an **ability maker**: pick what your own ability does (a status, a heal, a power-up or a shield), the DM approves it, and you trigger it with one tap in battle
 

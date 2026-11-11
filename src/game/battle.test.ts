@@ -4,7 +4,7 @@ import { rollDice } from '../lib/util';
 import { abilityInfo, bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { AC, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, maxHP } from './rules';
+import { AC, M, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
 import { G, setUi, update } from './store';
 import type { AttackResult, Char, Enemy } from './types';
 
@@ -511,5 +511,40 @@ describe('automatic move effects', () => {
     both(hero => { const n = hero.tree.physical.nodes; ['hit', 'guard', 'hp', 'uses'].forEach((fx, i) => { n[i].fx = fx; n[i].on = i !== 1; }); });
     both((hero, foe) => { expect(toHit(hero, tackle, foe).bonus).toBe(hit + 1); expect(AC(hero)).toBe(guard); expect(maxHP(hero)).toBe(hp + 4); });
     both((hero, foe) => { hero.ability = 'blaze'; expect(abilityInfo(hero)).toMatchObject({ left: 2 }); triggerAbility(hero, foe); triggerAbility(hero, foe); expect(abilityInfo(hero)!.used).toBe(true); });
+  });
+});
+
+describe('rolled stats and personality', () => {
+  it('rolls six scores at creation, and locks them once the player places them', () => {
+    const c = createChar('Charmander', '', 'Luis', 3);
+    expect(c.rolled).toHaveLength(6);
+    c.rolled!.forEach(n => { expect(n).toBeGreaterThanOrEqual(3); expect(n).toBeLessThanOrEqual(18); });
+    c.rolled = [18, 15, 14, 12, 10, 8];
+    update(s => {
+      s.chars = [c];
+      expect(() => lockScores(c, { atk: 0, def: 0, spe: 2, spa: 3, spd: 4, heart: 5 })).toThrow(/every stat/);
+      lockScores(c, { atk: 5, def: 1, spe: 2, spa: 0, spd: 4, heart: 3 });
+      expect([score(c, 'spa'), score(c, 'atk'), score(c, 'heart')]).toEqual([18, 8, 12]);
+      expect(c.hpCur).toBe(maxHP(c));
+      expect(() => lockScores(c, { atk: 0, def: 1, spe: 2, spa: 3, spd: 4, heart: 5 })).toThrow(/already locked/);
+    });
+  });
+
+  it('an approved nature shifts two modifiers, and the quiz gives a nature and a demeanor', () => {
+    const c = createChar('Charmander', '', 'Luis', 3), atk = M(c, 'atk'), spa = M(c, 'spa');
+    c.persona = { nature: 'adamant', demeanor: 'suspicious' };
+    expect(M(c, 'atk')).toBe(atk); // not approved yet
+    c.persona.ok = true;
+    expect([M(c, 'atk'), M(c, 'spa'), M(c, 'def')]).toEqual([atk + 1, spa - 1, M({ ...c, persona: undefined } as Char, 'def')]);
+    expect(quizResult([0, 1, 2, 2, 2, 3, 0, 3])).toMatchObject({ demeanor: 'suspicious' });
+    expect(quizResult([3, 3, 0, 1, 1, 1, 2, 0])).toEqual({ nature: 'lonely', demeanor: 'fearless' });
+  });
+
+  it('Inspiration gives advantage on one attack', () => {
+    const { heroId, foeId } = duel();
+    update(s => { s.chars[0].inspired = true; });
+    expect(attack(heroId, foeId)!.adv).toBe(true);
+    expect(G().chars[0].inspired).toBe(false);
+    expect(attack(heroId, foeId)!.adv).toBe(false);
   });
 });

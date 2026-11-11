@@ -35,6 +35,14 @@ export interface Char extends Mon {
   inDungeon: boolean; img: string; hpv?: number; xp?: number; createdAt?: number; custom?: boolean; tree: Tree;
   megaForm?: number; megaReady?: boolean; mega?: { state: 'draft' | 'pending' | 'active' | 'passed'; trial: string; by?: string };
   blessings?: number; friend?: number;
+  /** Six ability scores rolled once (4d6, drop the lowest). The player places them, then they lock for good. */
+  rolled?: number[];
+  /** Where the rolled scores went. Once set, these replace the scores worked out from the species. */
+  scores?: Partial<Record<StatKey | 'heart', number>>;
+  /** Personality from the quiz. The nature's boost and the in-character card count once the DM approves (`ok`). */
+  persona?: { nature: string; demeanor: string; ok?: boolean };
+  /** Earned by staying in character: advantage on the next attack. */
+  inspired?: boolean;
   /** Moves the player hopes to learn (slugs), for the DM to see. */
   wish?: string[];
   /** Chosen preset ability (slug). Defaults to the first in `abilities`. */

@@ -1,10 +1,10 @@
 /* Character rules: stats, HP, levels, XP, evolution, items and loot. Functions that change state
    must run inside update(); they read and write through G(). */
 import { T, roll, rollDice, slug, toID, uid, fmt, money } from '../lib/util';
-import { ABILITY_FX, CHART, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, RAR, STATUS, type ItemDef } from './data';
+import { ABILITY_FX, CHART, DEMEANORS, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, NATURES, QUIZ, RAR, STATS, STATUS, type ItemDef } from './data';
 import { LVL_RATIO, dex, dexReady, evoLine, getEvos, getMove, getPokemonAny, type MegaForm } from './dex';
 import { G, addLog, announce, me, toast } from './store';
-import type { AbilityFx, BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
+import type { AbilityFx, BagItem, Char, Stats, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
 import { BT, blog, knockout } from './battle';
 import { leaveDungeon, partyChars } from './explore';
 
@@ -50,12 +50,50 @@ export function megaBase(c: Fighter) {
 }
 export function score(c: Mon, k: StatKey | 'heart') {
   const b = (c.bonus?.[k] || 0) + (heldFx(c).stat?.[k] || 0);
-  if (k === 'heart') return (c.heart || 10) + b;
-  const base = megaBase(c as Fighter) || c.base;
-  return Math.min(20, Math.max(4, Math.round(6 + ((base && base[k]) || 50) / 12))) + b;
+  const own = (c as Char).scores?.[k], mega = megaBase(c as Fighter);
+  if (k === 'heart') return (own ?? (c.heart || 10)) + b;
+  // Rolled and locked scores replace the species' own; a Mega form still adds what it adds to the species.
+  if (own != null) return own + (mega ? fromBase(mega, k) - fromBase(c.base, k) : 0) + b;
+  return fromBase(mega || c.base, k) + b;
 }
+const fromBase = (base: Partial<Stats> | null | undefined, k: StatKey) => Math.min(20, Math.max(4, Math.round(6 + ((base && base[k]) || 50) / 12)));
+/** How far a hero's rolled score sits above (or below) what its species would give. Rivals copy this to stay an even match. */
+export const rolledEdge = (c: Char, k: StatKey) => (c.scores?.[k] != null ? c.scores[k]! - fromBase(c.base, k) : 0);
 export const mod = (s: number) => Math.floor((s - 10) / 2);
-export const M = (c: Mon, k: StatKey | 'heart') => mod(score(c, k));
+/** A nature the DM approved: +1 to one stat's modifier, −1 to another. */
+export const natureMod = (c: Mon, k: StatKey | 'heart') => {
+  const p = (c as Char).persona, n = p?.ok ? NATURES[p.nature] : null;
+  return n ? (n[0] === k ? 1 : n[1] === k ? -1 : 0) : 0;
+};
+export const M = (c: Mon, k: StatKey | 'heart') => mod(score(c, k)) + natureMod(c, k);
+
+/* ---------- Rolled stats ---------- */
+/** Six ability scores, each 4d6 with the lowest die dropped (3 to 18). */
+export const rollScores = () => Array.from({ length: 6 }, () => { const d = [roll(6), roll(6), roll(6), roll(6)].sort((a, b) => a - b); return d[1] + d[2] + d[3]; });
+export const SCORE_KEYS = ['atk', 'def', 'spe', 'spa', 'spd', 'heart'] as const;
+/** Place the rolled scores, one per stat, and lock them for good. `at[k]` is a position in `c.rolled`. Throws unless every roll is used once. */
+export function lockScores(c: Char, at: Record<string, number>) {
+  if (c.scores) throw new Error('These stats are already locked in.');
+  const idx = SCORE_KEYS.map(k => at[k]);
+  if (c.rolled?.length !== 6 || new Set(idx).size !== 6 || idx.some(i => !(i >= 0 && i < 6))) throw new Error('Give every stat one of the rolls.');
+  const full = c.hpCur >= maxHP(c);
+  c.scores = Object.fromEntries(SCORE_KEYS.map(k => [k, c.rolled![at[k]]]));
+  c.hpCur = full ? maxHP(c) : Math.min(c.hpCur, maxHP(c));
+  addLog(`${nameOf(c)} locked in its rolled stats.`);
+}
+
+/* ---------- Personality ---------- */
+const statName = (k: string) => STATS.find(s => s[0] === k)?.[1] || k;
+export const natureText = (n: string) => `${T(n)} nature${NATURES[n] ? ` (+1 ${statName(NATURES[n]![0])}, −1 ${statName(NATURES[n]![1])})` : ' (no stat change)'}`;
+/** Nature and demeanor from the quiz answers (one answer per question). Ties go to the most recent answer. */
+export function quizResult(ans: number[]) {
+  const st: Record<string, number> = {}, dm: Record<string, number> = {}, last: Record<string, number> = {};
+  ans.forEach((a, q) => { const o = QUIZ[q]?.a[a]; if (!o) return; st[o.s] = (st[o.s] || 0) + 1; dm[o.d] = (dm[o.d] || 0) + 1; last[o.s] = last[o.d] = q; });
+  const top = (m: Record<string, number>) => Object.keys(m).sort((x, y) => m[y] - m[x] || last[y] - last[x])[0];
+  const up = top(st) || 'atk';
+  const down = ['atk', 'def', 'spa', 'spd', 'spe'].filter(k => k !== up).sort((x, y) => (st[x] || 0) - (st[y] || 0) || (last[x] ?? -1) - (last[y] ?? -1))[0];
+  return { nature: Object.keys(NATURES).find(n => NATURES[n]?.[0] === up && NATURES[n]?.[1] === down) || 'hardy', demeanor: (top(dm) || 'steady') as keyof typeof DEMEANORS };
+}
 export const prof = (l: number) => 2 + Math.floor((Math.max(1, l) - 1) / 4);
 export const hitDie = (c: Mon) => { const h = c.base?.hp || 50; return h <= 50 ? 6 : h <= 80 ? 8 : h <= 110 ? 10 : 12; };
 // Heroes get a +10 HP cushion, a bigger share of their base HP, and +1 HP per level, so a level 1 Pokémon survives 3 or 4 hits.
@@ -190,6 +228,7 @@ export function createChar(species: string, nick: string, player: string, level:
     notes: '', history: [], inDungeon: false, hpCur: 0, img: '', hpv: 2, xp: 0, createdAt: Date.now(), tree: undefined as unknown as Tree,
   };
   c.tree = defaultTree(c);
+  c.rolled = rollScores();
   c.hpCur = maxHP(c);
   for (const lm of p.levelMoves.filter(m => m.level <= gameLvl(level)).slice(-4)) {
     try { const mv = toTableMove(getMove(lm.name)); c.moves.push(mv); c.equipped.push(mv.name); } catch { /* move missing from dex */ }
@@ -232,6 +271,8 @@ export function evolve(c: Char, target: string) {
   try {
     const p = getPokemonAny(target), ev = getEvos(p.species);
     const ratio = c.hpCur / maxHP(c), from = T(c.species);
+    // Rolled scores grow with the new form by as much as the species' own scores do.
+    if (c.scores) (['atk', 'def', 'spa', 'spd', 'spe'] as const).forEach(k => { c.scores![k] = (c.scores![k] ?? 10) + fromBase(p.stats, k) - fromBase(c.base, k); });
     c.species = p.species; c.form = p.name; c.types = p.types; c.base = p.stats; c.abilities = p.abilities;
     c.levelMoves = p.levelMoves; c.evo = ev; c.evoLevel = defaultEvoLevel(ev); c.evoChoice = ev.targets[0]?.name || '';
     if (c.evoLevel && c.evoLevel <= c.level) c.evoLevel = c.level + 1;

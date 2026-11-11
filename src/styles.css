@@ -365,3 +365,6 @@ fieldset[disabled] .filebtn{opacity:.45}
 .critflash{position:absolute;inset:0;z-index:4;background:#fff;pointer-events:none;animation:critflash .5s .7s ease-out both}
 @keyframes critflash{0%{opacity:0}15%{opacity:.75}100%{opacity:0}}
 @media (prefers-reduced-motion: reduce){.zap,.burst,.critflash{display:none}}
+
+.quiz{display:grid;gap:8px}
+.quiz .btn{text-align:left;white-space:normal;height:auto;padding:10px 12px;line-height:1.35}

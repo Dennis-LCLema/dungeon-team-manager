@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Catalog } from '../components/Catalog';
 import { Avatar, HpBar, RarChip, run } from '../components/common';
-import { DIFF, ITEMS, TREE_FX } from '../game/data';
-import { abilityFxText, addItemTo, addLoot, avgLevel, defByName, diff, giveLine, longRest, maxHP, nameOf, processLevelUps, rollChest, rollDrop, shortRestHeal } from '../game/rules';
+import { DEMEANORS, DIFF, ITEMS, TREE_FX } from '../game/data';
+import { abilityFxText, natureText, addItemTo, addLoot, avgLevel, defByName, diff, giveLine, longRest, maxHP, nameOf, processLevelUps, rollChest, rollDrop, shortRestHeal } from '../game/rules';
 import { addLog, ask, me, toast, update, useGame } from '../game/store';
 import type { LootLine } from '../game/types';
 import { clampN, money, rollExpr } from '../lib/util';
-import { HomebrewDmButtons, MegaDmButtons, TreePropButtons } from './Sheet';
+import { HomebrewDmButtons, MegaDmButtons, PersonaDmButtons, TreePropButtons } from './Sheet';
 
 function Recipients({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const chars = useGame().chars;
@@ -113,6 +113,18 @@ export default function DM() {
               <b>{nameOf(x)}</b> <span className="small muted">{x.player} · {x.mega!.state === 'pending' ? 'waiting for approval' : 'in progress'}</span>
               <p className="small" style={{ margin: '6px 0' }}>"{x.mega!.trial}"</p>
               <MegaDmButtons c={x} sm />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {s.chars.some(x => x.persona && !x.persona.ok) ? (
+        <section className="card callout"><h2>Personalities</h2>
+          {s.chars.filter(x => x.persona && !x.persona.ok).map(x => (
+            <div className="loot" key={x.id}>
+              <b>{nameOf(x)}</b> <span className="small muted">{x.player}</span>
+              <p className="small" style={{ margin: '6px 0' }}><b>{DEMEANORS[x.persona!.demeanor]?.n}:</b> {DEMEANORS[x.persona!.demeanor]?.rule} <span className="muted">{natureText(x.persona!.nature)}</span></p>
+              <PersonaDmButtons c={x} />
             </div>
           ))}
         </section>

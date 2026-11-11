@@ -412,3 +412,68 @@ export const ABILITY_FX: Record<string, string> = {
 export const TREE_FX: Record<string, string> = {
   hit: '+1 to hit', dmg: '+1 damage', guard: '+1 Guard', spguard: '+1 Sp. Guard', hp: '+4 max HP', init: '+2 initiative', uses: '+1 ability use per battle',
 };
+
+/* ---------- Personality ---------- */
+/** Pokémon natures: [stat that gets +1 to its modifier, stat that gets −1]. Null changes nothing. */
+export const NATURES: Record<string, [string, string] | null> = {
+  hardy: null, lonely: ['atk', 'def'], brave: ['atk', 'spe'], adamant: ['atk', 'spa'], naughty: ['atk', 'spd'],
+  bold: ['def', 'atk'], docile: null, relaxed: ['def', 'spe'], impish: ['def', 'spa'], lax: ['def', 'spd'],
+  timid: ['spe', 'atk'], hasty: ['spe', 'def'], serious: null, jolly: ['spe', 'spa'], naive: ['spe', 'spd'],
+  modest: ['spa', 'atk'], mild: ['spa', 'def'], quiet: ['spa', 'spe'], bashful: null, rash: ['spa', 'spd'],
+  calm: ['spd', 'atk'], gentle: ['spd', 'def'], sassy: ['spd', 'spe'], careful: ['spd', 'spa'], quirky: null,
+};
+/** How a Pokémon carries itself. `rule` is the line the player sees whenever the team meets someone. */
+export const DEMEANORS: Record<string, { n: string; g: string; rule: string }> = {
+  suspicious: { n: 'Suspicious', g: '🧐', rule: 'Never trusts a stranger at first meeting. Asks what they want before anything else.' },
+  fearless: { n: 'Fearless', g: '🦁', rule: 'Steps forward first when there is danger, even when it is a bad idea.' },
+  kind: { n: 'Kind', g: '🌸', rule: 'Tries gentle words before a fight, and checks on anyone who is hurt.' },
+  proud: { n: 'Proud', g: '👑', rule: 'Hates to lose or look weak. Never asks for help first.' },
+  curious: { n: 'Curious', g: '🔍', rule: 'Has to touch, open or ask about anything new.' },
+  loyal: { n: 'Loyal', g: '🤝', rule: 'The team comes first. Never leaves a friend behind and never breaks a promise.' },
+  mischievous: { n: 'Mischievous', g: '😼', rule: 'Jokes at the wrong moment and cannot resist a prank or a shortcut.' },
+  steady: { n: 'Steady', g: '🍃', rule: 'Thinks before acting. Stays quiet under pressure and slows the others down.' },
+};
+/** The personality quiz. Each answer leans toward one stat (`s`, for the nature) and one demeanor (`d`). */
+export const QUIZ: { q: string; a: { t: string; s: string; d: string }[] }[] = [
+  { q: 'A stranger on the road to the first gate offers you a free Oran Berry.', a: [
+    { t: 'Ask what they want for it first.', s: 'spd', d: 'suspicious' },
+    { t: 'Thank them and split it with the team.', s: 'def', d: 'kind' },
+    { t: 'Take two when they look away.', s: 'spe', d: 'mischievous' },
+    { t: 'Ask where it grew and how they found it.', s: 'spa', d: 'curious' }] },
+  { q: 'The lanterns on the Lantern Stair go out all at once.', a: [
+    { t: 'Take the nearest paw and say it will be all right.', s: 'def', d: 'kind' },
+    { t: 'Stand still and listen until you know what is out there.', s: 'spd', d: 'steady' },
+    { t: 'Count the team to make sure nobody is missing.', s: 'def', d: 'loyal' },
+    { t: 'Say you were never scared, a little too loudly.', s: 'atk', d: 'proud' }] },
+  { q: 'Team Razorwind beats you in a spar in front of the whole school.', a: [
+    { t: 'Demand a rematch right now.', s: 'atk', d: 'proud' },
+    { t: 'Shake hands and ask how they did it.', s: 'spa', d: 'curious' },
+    { t: 'Decide they must have cheated, and watch them closely.', s: 'spd', d: 'suspicious' },
+    { t: "Laugh it off, then hide a Rolycoly's lunch.", s: 'spe', d: 'mischievous' }] },
+  { q: 'A wild Pokémon is caught in a trap, and it snaps at you when you come near.', a: [
+    { t: 'Speak softly and free it anyway.', s: 'def', d: 'kind' },
+    { t: 'Free it fast, before it can bite.', s: 'spe', d: 'fearless' },
+    { t: 'Study the trap first. Who set it?', s: 'spa', d: 'suspicious' },
+    { t: 'Wait for it to tire, then help.', s: 'spd', d: 'steady' }] },
+  { q: 'Guildmaster Orrin gives the team one Escape Rope. Who carries it?', a: [
+    { t: 'Whoever is weakest, so they always get out.', s: 'def', d: 'loyal' },
+    { t: "Me. I'm the one who will be in front.", s: 'atk', d: 'fearless' },
+    { t: "Me. I don't lose things.", s: 'spd', d: 'proud' },
+    { t: 'Nobody says, so I quietly take it.', s: 'spe', d: 'mischievous' }] },
+  { q: 'You find a sealed door covered in old human writing.', a: [
+    { t: 'Copy every mark before touching anything.', s: 'spa', d: 'curious' },
+    { t: 'Push it open.', s: 'atk', d: 'fearless' },
+    { t: 'Leave it. Sealed doors are sealed for a reason.', s: 'def', d: 'steady' },
+    { t: 'Ask who else knows about it, and why nobody told you.', s: 'spa', d: 'suspicious' }] },
+  { q: 'A teammate makes a mistake that costs the team a whole day.', a: [
+    { t: "Tell them it's fine, and mean it.", s: 'spd', d: 'kind' },
+    { t: 'Take the blame yourself in front of the guild.', s: 'def', d: 'loyal' },
+    { t: "Fix it yourself so it's done properly.", s: 'spa', d: 'proud' },
+    { t: 'Turn it into a story you tell for weeks.', s: 'spe', d: 'mischievous' }] },
+  { q: 'The gate finally opens. What do you do first?', a: [
+    { t: 'Run through.', s: 'spe', d: 'fearless' },
+    { t: 'Look back to make sure everyone is coming.', s: 'def', d: 'loyal' },
+    { t: 'Stop and take in everything on the other side.', s: 'spa', d: 'curious' },
+    { t: 'Breathe, and wait for the dust to settle.', s: 'spd', d: 'steady' }] },
+];
+export const STORY_Q = ['Where did you grow up?', 'Who or what did you lose to the Great Calamity?', 'What do you hope is behind the last gate?'];

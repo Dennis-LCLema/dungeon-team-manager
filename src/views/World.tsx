@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Avatar, TypeChip, Types, run } from '../components/common';
+import { Avatar, InCharacter, TypeChip, Types, run } from '../components/common';
 import { mapDecor } from '../components/mapDecor';
 import { SellList, ShopList, buy } from '../components/Shop';
 import { CAST, ITEM_BY_ID, KIND, STARTER_QUESTS, TEAMS, type CastMember, LAB_FLOORS, LAYERS, TCOL, labLvl, layerLvl, ringOf } from '../game/data';
 import { rollSurprise, startBattle, startRivalSpar } from '../game/battle';
 import { arriveLayer, exploreWild, layerClosed, layerNodes, nodeById, prepRun, rollHavenShop, type WorldNode } from '../game/explore';
 import { addItemTo, addLoot, defByName, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
-import { G, addLog, isDM, me, setUi, toast, update, useGame } from '../game/store';
+import { G, addLog, isDM, me, owns, setUi, toast, update, useGame } from '../game/store';
 import type { Enemy, Fighter } from '../game/types';
 import { getPokemonAny } from '../game/dex';
 import { T, money, uid } from '../lib/util';
@@ -388,7 +388,8 @@ export default function WorldView() {
     </div>
   );
   if (view === 'quests') return <>{tabs}<QuestCard /></>;
-  if (view === 'people') return <>{tabs}<TeamsCard k={k} /><CastCard k={k} /></>;
+  // Meeting someone? Each player sees how their own Pokémon acts; the DM sees everyone's, to reward it.
+  if (view === 'people') return <>{tabs}{G().chars.filter(c => dm || owns(c)).map(c => <InCharacter key={c.id} c={c} />)}<TeamsCard k={k} /><CastCard k={k} /></>;
   return (
     <>
       {tabs}

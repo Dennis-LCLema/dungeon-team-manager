@@ -6,7 +6,7 @@ import { G, addLog, canEdit, isDM, owns } from './store';
 import type { AttackResult, Battle, Char, Enemy, Fighter, Move, OrderEntry, Shared, Status } from './types';
 import {
   AC, M, SAC, SHADOW_RUSH, abilityOf, XP_FINISH, addLoot, clampHP, critOn, customMove, diff, effectiveness, enemyXP, gameLvl, heldDmg, heldFx,
-  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rollChest, rollDrop, toTableMove, treeFx, typesOf, tryReviver, weaponHit,
+  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rolledEdge, rollChest, rollDrop, toTableMove, treeFx, typesOf, tryReviver, weaponHit,
 } from './rules';
 
 export const BT = () => G().game.battle;
@@ -306,7 +306,9 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   // One-shot edges from abilities and support moves: this attack uses them up, hit or miss.
   const mine = bt?.flags?.[actor.id] || {}, pow = !!mine.power, edge = !!mine.edge, off = !!mine.off;
   if (pow || edge || off) Object.assign(flag(actor.id), { power: false, edge: false, off: false });
-  const up = surpriseAdv || fld.adv || pow || edge, down = fld.dis || off, adv = !manual && up && !down, dis = !manual && down && !up;
+  const insp = !manual && actor.kind !== 'enemy' && !!actor.inspired; // earned by staying in character
+  if (insp) (actor as Char).inspired = false;
+  const up = surpriseAdv || fld.adv || pow || edge || insp, down = fld.dis || off, adv = !manual && up && !down, dis = !manual && down && !up;
   const d20 = manual ? manual.d20 : adv ? Math.max(roll(20), roll(20)) : dis ? Math.min(roll(20), roll(20)) : roll(20), total = d20 + bonus;
   const crit = d20 >= critOn(actor);
   Object.assign(res, { d20, bonus, total, def, defName, adv, dis, crit, fx: fld.names.join(', ') || undefined });
@@ -544,6 +546,8 @@ export function buildRivals(ids: string[]): Enemy[] {
       // Offence and speed scale fully; HP and defences only by the square root, so fights stay short.
       Object.keys(e.base).forEach(key => { (e.base as Record<string, number>)[key] = Math.round((e.base as Record<string, number>)[key] * (['atk', 'spa', 'spe'].includes(key) ? k : Math.sqrt(k))); });
     }
+    // A rival trained as hard as its target: it gets the same lift (or drop) the hero's rolled stats gave.
+    if (mark) (['atk', 'def', 'spa', 'spd', 'spe'] as const).forEach(key => { e.bonus[key] = rolledEdge(mark, key); });
     // Fellow graduates: they get the same HP formula as the heroes, so it's an even fight.
     e.hpMax = e.hpCur = maxHP({ ...e, kind: undefined } as unknown as Char);
     s.world.met[r.id] = true;

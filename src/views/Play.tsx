@@ -1,4 +1,4 @@
-import { Avatar, HpBar, TypeChip, Types, XpBlock } from '../components/common';
+import { Avatar, HpBar, InCharacter, TypeChip, Types, XpBlock } from '../components/common';
 import { LAYERS, TCOL } from '../game/data';
 import { bGet, myTurnChar } from '../game/battle';
 import { nodeById } from '../game/explore';
@@ -78,6 +78,7 @@ export default function Play() {
         <div className="now-t">{now.title}</div>
         {now.sub ? <div className="small" style={{ marginTop: 4 }}>{now.sub}</div> : null}
       </section>
+      {mine.map(c => <InCharacter key={c.id} c={c} />)}
       {body}
     </>
   );

@@ -9,6 +9,7 @@ import { migrateChars, nameOf, needsMigration } from './game/rules';
 import { G, activeChar, canUndo, charById, getUi, isDM, me, owns, remote, saveBackup, setUi, toast, undo, update, useGame, useUi } from './game/store';
 import { initSync } from './game/sync';
 import { lsSet } from './lib/util';
+import { sfx } from './lib/sfx';
 import Account from './views/Account';
 import BattleView from './views/Battle';
 import DM from './views/DM';
@@ -40,6 +41,7 @@ function useBattleNotices() {
     if (live && live !== seen.current.battle) {
       setUi({ tab: 'play' });
       toast(b!.surprise === 'ambush' ? 'Ambush! A battle started.' : 'A battle started!');
+      sfx('start');
       try { navigator.vibrate?.([120, 60, 120]); } catch { /* not supported */ }
     }
     seen.current.battle = live;
@@ -54,6 +56,7 @@ function useBattleNotices() {
   useEffect(() => {
     if (key && key !== seen.current.turn && mt) {
       toast(`It's ${nameOf(mt)}'s turn!`);
+      sfx('turn');
       try { navigator.vibrate?.(150); } catch { /* not supported */ }
     }
     seen.current.turn = key;

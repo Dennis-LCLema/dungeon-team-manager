@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, startBattle } from './battle';
+import { abilityInfo, bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice } from './rules';
+import { AC, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, maxHP } from './rules';
 import { G, setUi, update } from './store';
 import type { AttackResult, Char, Enemy } from './types';
 
@@ -429,5 +429,87 @@ describe('level-ups and evolutions', () => {
     expect(lvl).toMatchObject({ kind: 'level', char: c.id, level: 4 });
     expect(evo).toMatchObject({ kind: 'evo', char: c.id, from: 'Mudkip', to: 'Marshtomp', species: 'marshtomp' });
     expect(G().chars[0]).toMatchObject({ species: 'marshtomp', img: '' });
+  });
+});
+
+describe('automatic move effects', () => {
+  const both = (fn: (hero: Char, foe: Enemy) => void) => update(s => fn(s.chars[0], s.game.battle!.enemies[0]));
+  const mv = (o: object) => ({ name: 'x', type: 'normal', cls: 'status', dice: '', ppMax: null, ppCur: 0, desc: '', ...o }) as never;
+
+  it('reads stat changes and status chances from the move text', () => {
+    expect(stageFx("Raises the user's Attack and Defense by 1.")).toEqual({ who: 'self', by: 1, stats: ['atk', 'def'] });
+    expect(stageFx('Lowers the foe(s) Sp. Atk by 2 if opposite gender.')).toEqual({ who: 'foes', by: -2, stats: ['spa'] });
+    expect(stageFx('Heals the user.')).toBeNull();
+    expect(sideStatus('10% chance to burn. 10% chance to flinch.')).toEqual({ pct: 10, st: 'burn' });
+    expect(sideStatus('Lasts 2-3 turns. Confuses the user afterwards.')).toBeNull();
+  });
+
+  it('Swords Dance and Leer change the to-hit math, up to 3 stages', () => {
+    duel();
+    const tackle = mv({ cls: 'physical', dice: '1d8' });
+    let base = 0, baseDef = 0;
+    both((hero, foe) => { ({ bonus: base, def: baseDef } = toHit(hero, tackle, foe)); });
+    both((hero, foe) => { resolveMove(hero, mv({ desc: "Raises the user's Attack by 2." }), foe); resolveMove(hero, mv({ desc: 'Lowers the foe(s) Defense by 1.' }), foe); });
+    both((hero, foe) => { expect(toHit(hero, tackle, foe)).toMatchObject({ bonus: base + 2, def: baseDef - 1 }); });
+    both((hero, foe) => { resolveMove(hero, mv({ desc: "Raises the user's Attack by 2." }), foe); expect(toHit(hero, tackle, foe).bonus).toBe(base + 3); });
+  });
+
+  it('a hit rolls the move’s own status chance', () => {
+    duel();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5); // d20 11 hits; d100 51 is within 100%
+    both((hero, foe) => { foe.hpCur = foe.hpMax = 500; resolveMove(hero, mv({ cls: 'physical', dice: '1d8', desc: '100% chance to paralyze the target.' }), foe); });
+    expect(G().game.battle!.enemies[0].status).toBe('paralysis');
+  });
+
+  it('a homebrew ability resolves itself once per battle', () => {
+    duel();
+    vi.spyOn(Math, 'random').mockReturnValue(0); // the foe rolls a 1 on its save
+    both(hero => { hero.homebrew = { name: 'Cinder Glare', desc: 'A stare that burns.', state: 'approved', fx: { kind: 'status', status: 'paralysis' } }; });
+    both((hero, foe) => { expect(abilityInfo(hero)).toMatchObject({ name: 'Cinder Glare', used: false }); triggerAbility(hero, foe); });
+    expect(G().game.battle!.enemies[0].status).toBe('paralysis');
+    expect(G().game.battle!.last).toMatchObject({ ability: true, move: 'Cinder Glare' });
+    expect(() => both((hero, foe) => triggerAbility(hero, foe))).toThrow(/already used/);
+  });
+
+  it('a shield ability halves the next hit only', () => {
+    duel();
+    both(hero => { hero.homebrew = { name: 'Wax Shield', desc: 'Hardened wax.', state: 'approved', fx: { kind: 'guard' } }; });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const hit = () => { let d = 0; both((hero, foe) => { hero.hpCur = 999; d = resolveMove(foe, mv({ cls: 'physical', dice: '1d8' }), hero)!.dmg!; }); return d; };
+    const full = hit();
+    both((hero, foe) => triggerAbility(hero, foe));
+    expect(hit()).toBe(Math.max(1, Math.floor(full / 2)));
+    expect(hit()).toBe(full);
+  });
+
+  it('every other status move resolves itself: heals, Protect, and a simple edge for the rest', () => {
+    duel();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const tackle = mv({ cls: 'physical', dice: '1d8' });
+    both((hero, foe) => { hero.hpCur = 1; const r = resolveMove(hero, mv({ desc: 'Heals the user by 50% of its max HP.' }), foe)!; expect(r.heal).toBe(Math.floor(maxHP(hero) / 2)); expect(hero.hpCur).toBe(1 + r.heal!); });
+    both((hero, foe) => {
+      resolveMove(hero, mv({ desc: 'Prevents moves from affecting the user this turn.' }), foe);
+      const hp = hero.hpCur, r = resolveMove(foe, tackle, hero)!;
+      expect(r.hit).toBe(false); expect(r.extra).toMatch(/protected itself/); expect(hero.hpCur).toBe(hp);
+      expect(resolveMove(foe, tackle, hero)!.d20).toBe(11); // only the first attack is blocked
+    });
+    vi.spyOn(Math, 'random').mockReturnValue(0); // the foe fails its save
+    both((hero, foe) => {
+      expect(resolveMove(hero, mv({ desc: 'Target repeats its last move for its next 3 turns.' }), foe)!.save).toMatch(/failed\. .*disadvantage/);
+      expect(resolveMove(foe, tackle, hero)!.dis).toBe(true);
+      expect(resolveMove(hero, mv({ desc: 'No competitive use.' }), hero)!.save).toMatch(/advantage on its next attack/);
+      expect(resolveMove(hero, tackle, foe)!.adv).toBe(true);
+      expect(resolveMove(hero, tackle, foe)!.adv).toBe(false);
+    });
+  });
+
+  it('unlocked skill-tree entries with a bonus change the numbers, and add ability uses', () => {
+    duel();
+    const tackle = mv({ cls: 'physical', dice: '1d8' });
+    let hit = 0, guard = 0, hp = 0;
+    both((hero, foe) => { hit = toHit(hero, tackle, foe).bonus; guard = AC(hero); hp = maxHP(hero); });
+    both(hero => { const n = hero.tree.physical.nodes; ['hit', 'guard', 'hp', 'uses'].forEach((fx, i) => { n[i].fx = fx; n[i].on = i !== 1; }); });
+    both((hero, foe) => { expect(toHit(hero, tackle, foe).bonus).toBe(hit + 1); expect(AC(hero)).toBe(guard); expect(maxHP(hero)).toBe(hp + 4); });
+    both((hero, foe) => { hero.ability = 'blaze'; expect(abilityInfo(hero)).toMatchObject({ left: 2 }); triggerAbility(hero, foe); triggerAbility(hero, foe); expect(abilityInfo(hero)!.used).toBe(true); });
   });
 });

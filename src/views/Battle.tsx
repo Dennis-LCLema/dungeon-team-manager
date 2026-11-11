@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
+import { Die, stillMotion } from '../components/Dice';
+import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, abilityInfo, callAssist, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
-import { M, MAX_LEVEL, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
+import { M, MAX_LEVEL, abilityFxText, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
 import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared, Status } from '../game/types';
 import { T, fmt, roll, slug, uid } from '../lib/util';
@@ -117,23 +119,17 @@ const ord = (n: number) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 =
 
 /** One fighter's initiative dice: they tumble through random faces, then land on the real roll and show the total. */
 function InitRoll({ o, delay }: { o: OrderEntry; delay: number }) {
-  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const [face, setFace] = useState<number[] | null>(still ? null : [roll(20), roll(20)]);
   const [wait] = useState(delay); // keep the first delay, so a re-sorted list doesn't re-roll everyone
+  const [rolling, setRolling] = useState(() => !stillMotion());
   useEffect(() => {
-    if (still) return;
-    const t0 = Date.now(), id = setInterval(() => {
-      const done = Date.now() - t0 >= wait + 900;
-      setFace(done ? null : [roll(20), roll(20)]);
-      if (done) clearInterval(id);
-    }, 70);
-    return () => clearInterval(id);
-  }, [o.r1, o.r2, wait, still]);
-  const dice = (face || [o.r1, o.r2]).slice(0, o.r2 != null ? 2 : 1);
+    const t = setTimeout(() => setRolling(false), wait + 1000);
+    return () => clearTimeout(t);
+  }, [wait]);
   return (
     <span className="mono small initroll">
-      {dice.map((n, i) => <span key={i} className={`die ${face ? 'rolling' : 'landed'}`}>{n ?? '?'}</span>)}
-      {face ? null : <span>{o.mod != null ? fmt(o.mod) : ''} = <b>{o.init}</b></span>}
+      <Die value={o.r1} rolling={rolling} size={36} />
+      {o.r2 != null ? <Die value={o.r2} rolling={rolling} size={36} /> : null}
+      {rolling ? null : <span>{o.mod != null ? fmt(o.mod) : ''} = <b>{o.init}</b></span>}
     </span>
   );
 }
@@ -141,6 +137,7 @@ function InitRoll({ o, delay }: { o: OrderEntry; delay: number }) {
 function Intro({ b }: { b: Battle }) {
   const dm = isDM();
   const mine = b.order.map((o, i) => [o, i] as const).filter(([o]) => o.ref === 'pc' && owns(bGet(o) as Char));
+  useEffect(() => { sfx('dice'); }, []);
   return (
     <div className="card callout intro anim">
       <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
@@ -159,7 +156,7 @@ function Intro({ b }: { b: Battle }) {
             <li key={o.id} className={`${sideOf(o) === 'enemy' ? 'foe' : ''} ${o.ref === 'pc' && owns(x as Char) ? 'me' : ''}`} style={{ '--d': i * 0.18 + 's' } as React.CSSProperties}>
               <span className="ipos">{i + 1}</span><Avatar c={x} size={30} />
               <span className="grow"><b>{nameOf(x)}</b> <span className="small muted">{sideOf(o) === 'enemy' ? 'Foe' : 'Team'}</span></span>
-              <InitRoll o={o} delay={i * 180} />
+              <InitRoll key={`${o.r1}:${o.r2}`} o={o} delay={i * 180} />
               {dm ? (
                 <input type="number" min={1} max={20} className="initedit" key={o.r1} defaultValue={o.r1} title="Type the d20 they rolled with their own dice" aria-label={`d20 that ${nameOf(x)} rolled`}
                   onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -193,18 +190,20 @@ function TurnPanel({ b }: { b: Battle }) {
   const [pick, setPick] = useState('');
   const [itemSel, setItemSel] = useState(0);
   const [assistSel, setAssistSel] = useState(0);
-  const [own, setOwn] = useState(false);
+  const realDice = !!useGame().rules.ownDice;
   const [ownMove, setOwnMove] = useState<number | null>(null);
   const [ownD20, setOwnD20] = useState('');
   const [ownDmg, setOwnDmg] = useState('');
-  const tgtId = tgtList.some(o => o.id === pick) ? pick : tgtList[0]?.id;
+  const want = b.ask && ownMove == null ? b.ask.target : pick; // a player waiting on real dice already chose the target
+  const tgtId = tgtList.some(o => o.id === want) ? want : tgtList[0]?.id;
   const tgtO = b.order.find(o => o.id === tgtId), tgt = tgtO ? bGet(tgtO) : null, tgtFoe = !!tgtO && sideOf(tgtO) !== mySide;
-  const isPc = cur.ref === 'pc', hero = isPc ? (actor as Char) : null;
+  const isPc = cur.ref === 'pc', hero = isPc ? (actor as Char) : null, own = realDice && isPc;
   const moves: Move[] = isPc ? equippedOf(hero!) : actor.moves;
   const shadowFoes = foes.map(o => bGet(o) as Enemy).filter(x => x?.shadow);
   const readyAssists = hero ? hero.assists.map((a, i) => [a, i] as const).filter(([a]) => !a.used) : [];
   const downed = mySide === 'team' ? b.order.filter(o => o.ref === 'pc' && (bGet(o)?.hpCur || 0) <= 0).map(o => bGet(o) as Char) : [];
   const bag = hero ? usableBag(hero) : [];
+  const abil = hero ? abilityInfo(hero) : null;
   const canMega = !!hero && hero.megaReady && hero.megaOn == null && !b.megaUsed?.[hero.id] && megaForms(hero).length > 0;
   const effTag = (m: Move) => {
     if (!tgt || !tgtFoe || m.cls === 'status' || !m.dice) return null;
@@ -224,20 +223,26 @@ function TurnPanel({ b }: { b: Battle }) {
     nextTurn();
   });
   const pickMove = (i: number) => {
-    if (own && moves[i]?.dice && moves[i].cls !== 'status') { setOwnMove(i); setOwnD20(''); setOwnDmg(''); return; }
+    if (own && moves[i]?.dice && moves[i].cls !== 'status') {
+      // Real dice: the DM types the numbers. A player's pick waits on every screen until the DM does.
+      if (dm) { setOwnMove(i); setOwnD20(''); setOwnDmg(''); }
+      else onTurn((bb, _c, a) => { bb.ask = { move: i, target: tgtId || '' }; blog(`${nameOf(a)} picks ${T(moves[i].name)} and rolls real dice.`); });
+      return;
+    }
     fire(i);
   };
   // Preview of a player's own d20: same math the engine uses.
-  const om = ownMove != null ? moves[ownMove] : null, d20 = Math.round(+ownD20);
+  const omIdx = ownMove ?? (dm && b.ask ? b.ask.move : null), om = omIdx != null ? moves[omIdx] : null, d20 = Math.round(+ownD20);
+  const dropAsk = () => { setOwnMove(null); if (b.ask) update(d => { delete d.game.battle?.ask; }); };
   const ownCheck = om && tgt && d20 >= 1 && d20 <= 20 ? (() => {
     const { bonus, def, defName } = toHit(actor, om, tgt), crit = d20 >= critOn(actor);
     return { bonus, def, defName, crit, total: d20 + bonus, hit: d20 !== 1 && (crit || d20 + bonus >= def) };
   })() : null;
   const applyOwn = () => {
-    if (ownMove == null || !ownCheck) return toast('Type the d20 they rolled (1 to 20).', 'bad');
+    if (omIdx == null || !ownCheck) return toast('Type the d20 they rolled (1 to 20).', 'bad');
     const dmg = Math.round(+ownDmg);
     if (ownCheck.hit && !(ownDmg !== '' && dmg >= 0)) return toast('Type their damage roll.', 'bad');
-    fire(ownMove, { d20, dmg: ownCheck.hit ? dmg : undefined });
+    fire(omIdx, { d20, dmg: ownCheck.hit ? dmg : undefined });
   };
   const purify = () => onTurn((bb, _c, a) => {
     const t = target(G()) as Enemy | null;
@@ -267,10 +272,7 @@ function TurnPanel({ b }: { b: Battle }) {
     blog(`${nameOf(a)} helps ${nameOf(x)} back up! ${nameOf(x)} is back with ${x.hpCur} HP.`);
     nextTurn();
   });
-  const assist = () => onTurn((_bb, _c, a) => {
-    const a2 = (a as Char).assists[readyAssists[assistSel]?.[1] ?? -1];
-    if (a2) { a2.used = true; blog(`${nameOf(a)} calls in ${a2.name}, who uses ${a2.move}! (DM resolves the effect)`); }
-  });
+  const assist = () => onTurn((_bb, _c, a) => callAssist(a as Char, readyAssists[assistSel]?.[1] ?? -1, target(G())));
   const mega = () => onTurn((bb, _c, a) => {
     const x = a as Char;
     if (!x.megaReady || x.megaOn != null || bb.megaUsed?.[x.id] || !megaForms(x).length) { toast("This Pokémon can't Mega Evolve right now.", 'bad'); return; }
@@ -284,6 +286,8 @@ function TurnPanel({ b }: { b: Battle }) {
     toast(`${before} Mega Evolved! Now pick a move.`);
   });
 
+  const ability = () => onTurn((_bb, _c, a) => triggerAbility(a, target(G())));
+
   return (
     <div className="card callout turn">
       <div className="row between"><h2 style={{ margin: 0 }}>{isPc && owns(hero) ? 'Your turn: ' : ''}{nameOf(actor)}</h2><span className="small muted">Round {b.round}</span></div>
@@ -296,11 +300,17 @@ function TurnPanel({ b }: { b: Battle }) {
         <span className="small muted" style={{ fontWeight: 600 }}>2. Pick a move</span>
         {isPc && dm ? (
           <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }}>
-            <input type="checkbox" checked={own} onChange={e => { setOwn(e.target.checked); setOwnMove(null); }} /> Type in the player's own dice
+            <input type="checkbox" checked={realDice} onChange={e => { const on = e.target.checked; setOwnMove(null); update(d => { d.rules.ownDice = on; if (d.game.battle) delete d.game.battle.ask; }); }} /> Players roll real dice (I type them in)
           </label>
         ) : null}
       </div>
-      {own && om ? (
+      {b.ask && !dm && moves[b.ask.move] ? (
+        <div className="banner">
+          <b>🎲 Roll your real dice!</b> A d20 for <b>{T(moves[b.ask.move].name)}</b>{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number. If it hits, roll {moves[b.ask.move].dice} for damage too.
+          <div className="row" style={{ marginTop: 8 }}><button className="btn sm" onClick={dropAsk}>Pick another move</button></div>
+        </div>
+      ) : null}
+      {own && om && dm ? (
         <div className="loot" style={{ marginBottom: 10 }}>
           <b>{T(om.name)}</b> on <b>{tgt ? nameOf(tgt) : '?'}</b>
           <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
@@ -315,7 +325,7 @@ function TurnPanel({ b }: { b: Battle }) {
           ) : <p className="small muted" style={{ margin: '8px 0' }}>The app adds their attack bonus and checks it against the target.</p>}
           <div className="row">
             <button className="btn primary" onClick={applyOwn} disabled={!ownCheck}>{ownCheck && !ownCheck.hit ? 'Confirm miss' : 'Apply'}</button>
-            <button className="btn ghost" onClick={() => setOwnMove(null)}>Pick another move</button>
+            <button className="btn ghost" onClick={dropAsk}>Pick another move</button>
           </div>
         </div>
       ) : null}
@@ -331,7 +341,7 @@ function TurnPanel({ b }: { b: Battle }) {
           );
         }) : <p className="small muted">No moves equipped.</p>}
       </div>
-      {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || (!isPc && dm) ? <>
+      {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || abil || (!isPc && dm) ? <>
         <div className="small muted" style={{ margin: '12px 0 6px', fontWeight: 600 }}>Or do something else</div>
         <div className="row">
           {bag.length ? (
@@ -352,6 +362,7 @@ function TurnPanel({ b }: { b: Battle }) {
               <button className="btn" onClick={assist}>Call assist</button>
             </span>
           ) : null}
+          {abil ? <button className="btn gold" disabled={abil.used} title={abilityFxText(abil.fx)} onClick={ability}>✨ {abil.used ? `${abil.name} used` : `Use ${abil.name}${abil.left > 1 ? ` (${abil.left} left)` : ''}`}</button> : null}
           {canMega ? <button className="btn gold" onClick={mega}>Mega Evolve into {megaForms(hero)[hero!.megaForm || 0][0].replace(/-Mega.*/, '')}!</button> : null}
           {!isPc && dm ? <button className="btn gold" onClick={() => run(() => update(autoTurn))}>Auto turn</button> : null}
         </div>
@@ -424,6 +435,7 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
     if (xx.hpCur <= 0 && !(xx.kind === 'enemy' && xx.outReason)) handleKO(xx, null);
     checkEnd();
   });
+  const stg = Object.entries(b.stage?.[x.id] || {}).filter(([, v]) => v);
   return (
     <div key={hit ? b.last!.id : 'c'} className={`combatant ${acting ? 'cur' : ''} ${isOut(x) ? 'out' : ''} ${sideOf(o) === 'enemy' ? 'foe' : ''} ${hit ? 'flash' : ''}`}>
       <div className="row between" style={{ flexWrap: 'nowrap' }}>
@@ -447,9 +459,10 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
         </div>
       ) : null}
       {status ? <div className="small" style={{ marginTop: 4, fontWeight: 700 }}>{status}</div> : null}
-      {!isOut(x) && (x.status || (dm && !b.result)) ? (
+      {!isOut(x) && (x.status || stg.length || (dm && !b.result)) ? (
         <div className="row small" style={{ marginTop: 6, gap: 6 }}>
           {x.status ? <span className="tag" title={STATUS[x.status].d}>{STATUS[x.status].g} {STATUS[x.status].n}</span> : null}
+          {stg.map(([key, v]) => <span key={key} className={`eff ${v > 0 ? 'up' : 'down'}`}>{STAGE_NAME[key]} {fmt(v)}</span>)}
           {dm && !b.result ? (
             <select aria-label={`Status for ${nameOf(x)}`} style={{ width: 'auto' }} value={x.status || ''} onChange={ev => {
               const st = (ev.target.value || null) as Status | null;
@@ -467,14 +480,21 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
 
 /** Battle scene: the background slot, both sides' sprites, and a lunge/shake for the latest move. */
 function Stage({ b }: { b: Battle }) {
-  const last = b.last;
+  const last = b.last, attack = !!last && !last.status, tc = { '--tc': (last && TCOL[last.moveType]) || '#fff' } as React.CSSProperties;
   const fig = (o: OrderEntry, k: number) => {
     const x = bGet(o);
     if (!x) return null;
     const n = nameOf(x), foe = sideOf(o) === 'enemy';
-    const anim = last && !last.status ? (last.actor === n ? (foe ? 'lunge-l' : 'lunge-r') : last.target === n && last.dmg ? 'shake' : '') : '';
+    const isActor = last?.actor === n, isTarget = !!last && last.target.split(', ').includes(n);
+    // The attacker lunges; the target shakes, dodges or glows; a number floats up over it.
+    const anim = !last ? '' : isActor && attack ? (foe ? 'lunge-l' : 'lunge-r')
+      : isTarget ? (!attack ? 'buff' : !last.hit ? 'dodge' : last.dmg ? 'shake' : '') : isActor ? 'buff' : '';
+    const float = !last || !isTarget ? '' : last.heal ? `+${last.heal}`
+      : !attack ? '' : last.hit ? (last.dmg ? `−${last.dmg}` : 'No effect') : last.d20 == null ? 'Blocked' : 'Miss';
     return (
-      <div key={o.id + (anim ? last!.id : '')} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
+      <div key={o.id + (anim || float ? last!.id : '')} style={tc} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
+        {float ? <i className={`float ${last!.heal ? 'heal' : !last!.hit ? 'miss' : last!.crit ? 'crit' : 'dmg'}`}>{float}</i> : null}
+        {isTarget && attack && last!.hit && last!.dmg ? <i className="burst" /> : null}
         <Avatar c={x} size={60} />
         <span>{x.status ? STATUS[x.status].g + ' ' : ''}{n}</span>
         <HpBar cur={x.hpCur} max={hpMaxOf(x)} />
@@ -487,6 +507,8 @@ function Stage({ b }: { b: Battle }) {
       style={{ backgroundImage: `url(backgrounds/${b.bg || 'battle'}.webp), url(backgrounds/battle.webp), ${sceneUrl(b.scene ?? 0)}` }}>
       <div className="side team">{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => fig(o, k))}</div>
       <div className="side foes">{idx.filter(([o]) => sideOf(o) === 'enemy').map(([o, k]) => fig(o, k))}</div>
+      {attack && last!.d20 != null ? <i key={last!.id} style={tc} className={`zap ${last!.actorSide === 'team' ? 'to-r' : 'to-l'}`} /> : null}
+      {attack && last!.hit && last!.crit ? <i key={'crit' + last!.id} className="critflash" /> : null}
     </div>
   );
 }
@@ -551,6 +573,8 @@ export default function BattleView() {
   return (
     <>
       <Stage b={b} />
+      {/* The hit/miss card shows here, under the scene, so it never covers the animation. */}
+      <div id="hitslot" />
       <FieldCard b={b} />
       {panel}
       {/* The stage already shows everyone's HP, so players start with these folded to save scrolling. */}

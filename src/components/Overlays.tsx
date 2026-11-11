@@ -1,8 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { spriteUrl } from '../game/pokeapi';
 import { charById, getUi, setUi, toast, useGame, useUi } from '../game/store';
 import type { Fighter } from '../game/types';
 import { Avatar, TypeChip, run } from './common';
+import { Die, stillMotion } from './Dice';
+import { sfx } from '../lib/sfx';
 
 export function Toasts() {
   const { toasts } = useUi();
@@ -52,8 +55,9 @@ export function Modal() {
 
 /** Level-ups (on the owner's device), evolutions and Mega Evolutions (on everyone's), one at a time. */
 export function EventOverlay() {
-  const e = useUi().events[0];
+  const e = useUi().events[0], id = e?.id, kind = e?.kind;
   useGame();
+  useEffect(() => { if (id) sfx(kind === 'item' ? 'item' : 'level'); }, [id, kind]);
   if (!e) return null;
   const close = () => setUi({ events: getUi().events.slice(1) });
   const who = e.name || e.from, live = charById(e.char);
@@ -62,13 +66,14 @@ export function EventOverlay() {
   return (
     <div className="overlay" key={e.id} onClick={ev => { if (ev.target === ev.currentTarget) close(); }}>
       <div className="evobox" role="dialog" aria-modal="true">
-        <div className="small muted">{e.kind === 'level' ? 'Level up!' : e.kind === 'mega' ? `${who} is reacting to its Mega Stone!` : `What? ${who} is evolving!`}</div>
-        <div className="evoface"><Avatar c={face} size={120} />{e.kind === 'level' ? <b className="lvlbadge">Lv {e.level}</b> : null}</div>
-        <h2>{e.kind === 'level' ? `${who} reached level ${e.level}!` : e.kind === 'mega' ? `${who} Mega Evolved into ${e.to}!` : `${who} evolved into ${e.to}!`}</h2>
-        {e.kind === 'level'
+        <div className="small muted">{e.kind === 'item' ? 'New item!' : e.kind === 'level' ? 'Level up!' : e.kind === 'mega' ? `${who} is reacting to its Mega Stone!` : `What? ${who} is evolving!`}</div>
+        {e.kind === 'item' ? <div className="evoface giftface" aria-hidden="true">🎁</div>
+          : <div className="evoface"><Avatar c={face} size={120} />{e.kind === 'level' ? <b className="lvlbadge">Lv {e.level}</b> : null}</div>}
+        <h2>{e.kind === 'item' ? e.name : e.kind === 'level' ? `${who} reached level ${e.level}!` : e.kind === 'mega' ? `${who} Mega Evolved into ${e.to}!` : `${who} evolved into ${e.to}!`}</h2>
+        {e.kind === 'item' ? null : e.kind === 'level'
           ? <ul className="small" style={{ textAlign: 'left', margin: '0 0 14px', paddingLeft: 20 }}>{(e.notes || []).map(n => <li key={n}>{n}</li>)}</ul>
           : <div className="row" style={{ justifyContent: 'center', gap: 4, marginBottom: 14 }}>{(e.types || []).map(t => <TypeChip key={t} t={t} />)}</div>}
-        <button className="btn primary" autoFocus onClick={close}>Awesome</button>
+        <button className="btn primary" autoFocus onClick={close}>{e.kind === 'item' ? 'Got it' : 'Awesome'}</button>
       </div>
     </div>
   );
@@ -93,30 +98,47 @@ export function Announce() {
 /** Big hit/miss card shown on every screen after a battle move resolves. */
 export function AttackPopup() {
   const { popup: p } = useUi();
+  const [landedId, setLandedId] = useState('');
+  // The app's own d20 tumbles for a moment before the result shows. Dice typed in by the DM were rolled on the table already.
+  const tumble = !!p && !p.status && p.d20 != null && !p.manual && !stillMotion();
   useEffect(() => {
     if (!p) return;
-    const t = setTimeout(() => setUi({ popup: null }), p.ko || p.crit ? 4500 : 3500);
-    return () => clearTimeout(t);
-  }, [p]);
+    const wait = tumble ? 750 : 0;
+    if (tumble) sfx('dice');
+    const show = setTimeout(() => {
+      setLandedId(p.id);
+      sfx(p.heal ? 'heal' : p.status ? 'status' : !p.hit ? 'miss' : p.ko ? 'ko' : p.crit ? 'crit' : 'hit');
+    }, wait);
+    const hide = setTimeout(() => setUi({ popup: null }), wait + (p.ko || p.crit ? 4500 : 3500));
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, [p, tumble]);
   if (!p) return null;
+  const rolling = tumble && landedId !== p.id;
   const kind = p.status ? 'status' : !p.hit ? 'miss' : p.eff === 0 ? 'immune' : p.crit ? 'crit' : 'hit';
-  const head = { status: 'STATUS MOVE', miss: p.fumble ? 'MISS! (natural 1)' : 'MISS!', immune: 'NO EFFECT', crit: 'CRITICAL HIT!', hit: 'HIT!' }[kind];
-  return (
-    <div className="hitpop-wrap" role="status" aria-live="assertive">
-      <button className={`hitpop ${kind} ${p.actorSide}`} onClick={() => setUi({ popup: null })} aria-label={`${head} Tap to close`}>
+  const head = rolling ? 'Rolling…' : p.ability ? 'ABILITY!' : !p.status && !p.hit && p.d20 == null ? 'BLOCKED!'
+    : { status: 'STATUS MOVE', miss: p.fumble ? 'MISS! (natural 1)' : 'MISS!', immune: 'NO EFFECT', crit: 'CRITICAL HIT!', hit: 'HIT!' }[kind];
+  // On the battle screen the card sits in the page under the scene; on any other tab it floats at the bottom.
+  const slot = document.getElementById('hitslot');
+  const card = (
+    <div className={`hitpop-wrap ${slot ? 'inline' : ''}`} role="status" aria-live="assertive">
+      <button className={`hitpop ${rolling ? 'rolling' : kind} ${p.actorSide}`} onClick={() => setUi({ popup: null })} aria-label={`${head} Tap to close`}>
         <div className="hp-who"><b>{p.actor}</b> used <b>{p.move}</b> <TypeChip t={p.moveType} /> on <b>{p.target}</b></div>
+        {p.d20 != null && !p.status ? <div className="hp-die"><Die value={p.d20} rolling={rolling} size={68} tone={rolling ? '' : p.crit && p.hit ? 'crit' : p.hit ? '' : 'bad'} /></div> : null}
         <div className="hp-head">{head}</div>
-        {p.hit && !p.status && p.dmg ? <div className="hp-dmg mono">−{p.dmg} HP</div> : null}
-        {p.status ? <div className="hp-line">{p.save || `Save DC ${p.dc}. The DM resolves the effect.`}</div> : (
-          <div className="hp-line mono">
-            d20 {p.d20}{(p.bonus || 0) >= 0 ? '+' : ''}{p.bonus} = {p.total} vs {p.defName} {p.def}{p.adv ? ' · advantage' : p.dis ? ' · disadvantage' : ''}
-          </div>
-        )}
-        {p.hit && p.eff != null && p.eff !== 1 && p.eff !== 0 ? <div className="hp-line"><b>{p.eff > 1 ? "It's super effective!" : "It's not very effective."}</b></div> : null}
-        {p.fx ? <div className="hp-line">Field: {p.fx}</div> : null}
-        {p.extra ? <div className="hp-line">{p.extra}</div> : null}
-        {p.hit && p.hpMax ? <div className="hp-line">{p.ko ? <b>{p.target} is down!</b> : <>{p.target}: {p.hpLeft}/{p.hpMax} HP left</>}</div> : null}
+        {rolling ? null : <>
+          {p.hit && !p.status && p.dmg ? <div className="hp-dmg mono">−{p.dmg} HP</div> : null}
+          {p.status ? <div className="hp-line">{p.save || `Save DC ${p.dc}.`}</div> : p.d20 != null ? (
+            <div className="hp-line mono">
+              d20 {p.d20}{(p.bonus || 0) >= 0 ? '+' : ''}{p.bonus} = {p.total} vs {p.defName} {p.def}{p.adv ? ' · advantage' : p.dis ? ' · disadvantage' : ''}{p.manual ? ' · real dice' : ''}
+            </div>
+          ) : null}
+          {p.hit && p.eff != null && p.eff !== 1 && p.eff !== 0 ? <div className="hp-line"><b>{p.eff > 1 ? "It's super effective!" : "It's not very effective."}</b></div> : null}
+          {p.fx ? <div className="hp-line">Field: {p.fx}</div> : null}
+          {p.extra ? <div className="hp-line">{p.extra}</div> : null}
+          {p.hit && p.hpMax ? <div className="hp-line">{p.ko ? <b>{p.target} is down!</b> : <>{p.target}: {p.hpLeft}/{p.hpMax} HP left</>}</div> : null}
+        </>}
       </button>
     </div>
   );
+  return slot ? createPortal(card, slot) : card;
 }

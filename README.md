@@ -18,13 +18,17 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🎲 **Hit and miss popups** with the roll, the damage and type effectiveness, on every screen at once
 - 🎯 **Roll your own dice**: type your d20 and damage roll, and the app adds your bonuses
 - 🧬 Character sheets with moves, PP, a 3-branch skill tree, held items, evolution and Mega Trials
-- ✨ **Preset abilities** that work in battle (Sturdy, Flash Fire, Prankster…), plus a **homebrew ability** the DM approves
+- ✨ **Preset abilities** that work in battle (Sturdy, Flash Fire, Prankster…), plus an **ability maker**: pick what your own ability does (a status, a heal, a power-up or a shield), the DM approves it, and you trigger it with one tap in battle
 
 **For the Dungeon Master**
 - 🗺️ **9 overworld layers** and a **40-floor Labyrinth**, with a Shadow Gatekeeper every 5 floors
 - ⚔️ Turn-based battles with initiative, ambushes, Shadow Pokémon and purification
 - 🌫️ **Creative moments**: turn a clever idea (Fire on Water makes a Steam Fog) into a field effect for a few rounds
 - 🔥 **Status conditions**: burn, poison, paralysis, sleep, freeze and confusion run automatically each turn
+- 🎲 **Everything rolls itself**: every status move (stat changes, heals, Protect, cures and the rest), status chances on attacks (Ember's burn), saves and assists need no bookkeeping
+- 🎬 **Battle scene**: a d20 tumbles and lands for every roll, attacks fly across the scene, damage numbers float up, and built-in sound effects play (🔔 in the top bar turns them off)
+- 🎯 **Real dice, if the table wants them**: the DM switches on "Players roll real dice", players roll at the table, and the DM types the numbers in
+- 🌳 **Write your own skill-tree entries**: a player rewrites an entry and picks a bonus (+1 to hit, +4 max HP…); once the DM approves it, the app applies it
 - ⚔️🛡️ **Weapons and armor** in their own slots, alongside a held item
 - 🥊 A one-tap **graduation spar** against the rival team, each rival hunting the player it chose
 - 📜 **Previously on…**: a recap of last session's highlights, shown on everyone's screen

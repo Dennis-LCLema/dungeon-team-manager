@@ -123,8 +123,11 @@ export function itemGains(prev: Shared, next: Shared, mine: (c: Char) => boolean
 export function replaceFromRemote(next: Shared) {
   const gifts = uiState.meName ? itemGains(current, next, c => owns(c)) : [];
   if (undoStack.length && stable(next) !== stable(current)) undoStack.length = 0; // someone else changed something
-  gifts.forEach(m => toast(m));
-  if (gifts.length) { try { navigator.vibrate?.([80, 40, 80]); } catch { /* not supported */ } }
+  // A full-screen card, not a small toast: a gift should be hard to miss.
+  if (gifts.length) {
+    setUi({ events: [...uiState.events, ...gifts.map(m => ({ id: uid(), t: Date.now(), kind: 'item' as const, char: '', name: m.replace(/^\S+ /, '') }))] });
+    try { navigator.vibrate?.([80, 40, 80, 40, 160]); } catch { /* not supported */ }
+  }
   current = produce(next, normalize);
   persist();
   onLocalChange?.();

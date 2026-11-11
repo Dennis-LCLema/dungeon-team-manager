@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Catalog } from '../components/Catalog';
 import { Avatar, HpBar, RarChip, run } from '../components/common';
-import { DIFF, ITEMS } from '../game/data';
-import { addItemTo, addLoot, avgLevel, defByName, diff, giveLine, longRest, maxHP, nameOf, processLevelUps, rollChest, rollDrop, shortRestHeal } from '../game/rules';
+import { DIFF, ITEMS, TREE_FX } from '../game/data';
+import { abilityFxText, addItemTo, addLoot, avgLevel, defByName, diff, giveLine, longRest, maxHP, nameOf, processLevelUps, rollChest, rollDrop, shortRestHeal } from '../game/rules';
 import { addLog, ask, me, toast, update, useGame } from '../game/store';
 import type { LootLine } from '../game/types';
 import { clampN, money, rollExpr } from '../lib/util';
-import { HomebrewDmButtons, MegaDmButtons } from './Sheet';
+import { HomebrewDmButtons, MegaDmButtons, TreePropButtons } from './Sheet';
 
 function Recipients({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const chars = useGame().chars;
@@ -56,6 +56,7 @@ export default function DM() {
   const [catTo, setCatTo] = useState('storage');
   const trials = s.chars.filter(x => x.mega && (x.mega.state === 'pending' || x.mega.state === 'active'));
   const homebrews = s.chars.filter(x => x.homebrew?.state === 'pending');
+  const entries = s.chars.flatMap(x => (['ability', 'special', 'physical'] as const).flatMap(b => (x.tree?.[b]?.nodes || []).map((n, i) => ({ x, b, i, n })).filter(e => e.n.prop)));
 
   const rollLoot = () => update(() => {
     const lvl = clampN(lr.lvl || 1, 1, 20), n = clampN(lr.n || 1, 1, 6), lines: LootLine[] = [];
@@ -117,12 +118,24 @@ export default function DM() {
         </section>
       ) : null}
 
+      {entries.length ? (
+        <section className="card callout"><h2>Skill tree entries</h2>
+          {entries.map(e => (
+            <div className="loot" key={e.x.id + e.b + e.i}>
+              <b>{nameOf(e.x)}</b> <span className="small muted">{e.x.player} · replaces “{e.n.name}”</span>
+              <p className="small" style={{ margin: '6px 0' }}><b>{e.n.prop!.name}:</b> {e.n.prop!.desc} <span className="muted">{e.n.prop!.fx ? `${TREE_FX[e.n.prop!.fx]}, applied automatically.` : 'No automatic bonus.'}</span></p>
+              <TreePropButtons c={e.x} b={e.b} i={e.i} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
       {homebrews.length ? (
         <section className="card callout"><h2>Homebrew abilities</h2>
           {homebrews.map(x => (
             <div className="loot" key={x.id}>
               <b>{nameOf(x)}</b> <span className="small muted">{x.player}</span>
-              <p className="small" style={{ margin: '6px 0' }}><b>{x.homebrew!.name}:</b> {x.homebrew!.desc}</p>
+              <p className="small" style={{ margin: '6px 0' }}><b>{x.homebrew!.name}:</b> {x.homebrew!.desc} <span className="muted">{abilityFxText(x.homebrew!.fx)}</span></p>
               <HomebrewDmButtons c={x} sm />
             </div>
           ))}

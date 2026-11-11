@@ -1,10 +1,10 @@
 /* Character rules: stats, HP, levels, XP, evolution, items and loot. Functions that change state
    must run inside update(); they read and write through G(). */
 import { T, roll, rollDice, slug, toID, uid, fmt, money } from '../lib/util';
-import { CHART, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, RAR, type ItemDef } from './data';
+import { ABILITY_FX, CHART, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, RAR, STATUS, type ItemDef } from './data';
 import { LVL_RATIO, dex, dexReady, evoLine, getEvos, getMove, getPokemonAny, type MegaForm } from './dex';
 import { G, addLog, announce, me, toast } from './store';
-import type { BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
+import type { AbilityFx, BagItem, Char, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
 import { BT, blog, knockout } from './battle';
 import { leaveDungeon, partyChars } from './explore';
 
@@ -62,19 +62,28 @@ export const hitDie = (c: Mon) => { const h = c.base?.hp || 50; return h <= 50 ?
 const HERO_BONUS = 10;
 export const maxHP = (c: Mon) => {
   const hd = hitDie(c), con = M(c, 'def'), base = c.base?.hp || 50, hero = c.kind !== 'enemy';
-  return Math.max(1, hd + con + Math.floor(base / (hero ? 5 : 10)) + (hero ? HERO_BONUS : 0) + (c.level - 1) * Math.max(1, hd / 2 + 1 + con + (hero ? 1 : 0)));
+  return Math.max(1, hd + con + Math.floor(base / (hero ? 5 : 10)) + (hero ? HERO_BONUS + 4 * treeFx(c, 'hp') : 0) + (c.level - 1) * Math.max(1, hd / 2 + 1 + con + (hero ? 1 : 0)));
 };
 export const diff = () => DIFF[G().rules?.difficulty] || DIFF.normal;
 export const hpMaxOf = (x: Fighter) => (x.kind === 'enemy' ? x.hpMax : maxHP(x));
 export const mastery = (l: number) => (l >= 15 ? 4 : l >= 10 ? 3 : l >= 5 ? 2 : 1);
-/** Active ability slug: an approved homebrew replaces the preset one (and has no automatic effect). */
+/** How many unlocked skill-tree entries give this hero a bonus of kind `k` (see TREE_FX). Foes have no tree. */
+export function treeFx(x: Mon, k: string) {
+  const t = (x as Char).tree;
+  if (x.kind === 'enemy' || !t) return 0;
+  return (['ability', 'special', 'physical'] as const).reduce((n, b) => n + (t[b]?.nodes || []).filter(nd => nd.on && nd.fx === k).length, 0);
+}
+/** What a player-made ability does when triggered in battle, in words. */
+export const abilityFxText = (fx?: AbilityFx) => (!fx ? 'Advantage on your next attack. Once per battle, applied automatically.'
+  : (fx.kind === 'status' ? `Gives a foe the ${STATUS[fx.status || 'burn'].n} status unless it saves` : ABILITY_FX[fx.kind]) + '. Once per battle, applied automatically.');
+/** Active ability slug: an approved homebrew replaces the preset one. */
 export const abilityOf = (x: Fighter | Mon) => {
   if (x.kind === 'enemy') return '';
   const c = x as Char;
   return c.homebrew?.state === 'approved' ? 'homebrew' : c.ability || c.abilities?.[0] || '';
 };
-export const AC = (c: Mon) => 11 + M(c, 'def') + (abilityOf(c) === 'heavy-metal' ? 2 : 0) + (armorFx(c).guard || 0);
-export const SAC = (c: Mon) => 11 + M(c, 'spd') + (armorFx(c).spguard || 0);
+export const AC = (c: Mon) => 11 + M(c, 'def') + (abilityOf(c) === 'heavy-metal' ? 2 : 0) + (armorFx(c).guard || 0) + treeFx(c, 'guard');
+export const SAC = (c: Mon) => 11 + M(c, 'spd') + (armorFx(c).spguard || 0) + treeFx(c, 'spguard');
 export const typesOf = (c: Fighter | Mon) => {
   const m = megaOf(c as Fighter);
   return [...new Set([...(m ? m[1] : c.types || []), c.awakenedType].filter(Boolean) as string[])];

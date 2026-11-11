@@ -23,6 +23,12 @@ async function importJSON(text: string) {
 
 const HOUSE_RULES = [
   'Status moves like Thunder Wave, Will-O-Wisp, Toxic, Sleep Powder and Confuse Ray resolve themselves: the target saves (CON vs paralysis and poison, DEX vs burn, WIS vs sleep and confusion) against the move’s DC.',
+  'Stat moves resolve themselves too: Growl, Leer, Swords Dance, Harden and the like change to-hit and damage (Attack, Sp. Atk) or Guard by 1 per stage, up to 3, until the battle ends. Speed changes count as Dodge at half strength.',
+  'A damaging move with a status chance (Ember 10% burn, Body Slam 30% paralysis) rolls that chance itself on every hit.',
+  'Abilities the app does not run by itself are triggered by their player on their turn: once per battle, without using up the turn. A homebrew ability does what its maker picked; any other gives advantage on the next attack.',
+  'Every status move resolves itself. Heals restore half of max HP (a quarter for whole-team heals), Protect blocks the next attack, cures clear status. Anything stranger: a foe rolls a WIS save or attacks next with disadvantage, and an ally attacks next with advantage.',
+  'Skill tree entries can carry a bonus the app applies while unlocked: +1 to hit, +1 damage, +1 Guard, +1 Sp. Guard, +4 max HP, +2 initiative or +1 ability use per battle. Players can write their own entries; the DM approves each one.',
+  'Real dice: the DM can switch on “Players roll real dice” in battle. A player then picks a move, rolls at the table, and the DM types the numbers in.',
   'Ability checks: d20 + the stat’s modifier (STR Attack, DEX Speed, CON Defense, INT Sp. Atk, WIS Sp. Def, CHA Heart).',
   'Levels 1–20. Every D&D level equals 5 Pokémon game levels (Mudkip evolves at 16 → level 4).',
   'Ability scores = 6 + base stat ÷ 12 (max 20 before bonuses).',

@@ -1,12 +1,12 @@
 /* Battle engine. State-changing functions run inside update(). */
 import { T, clampN, fmt, roll, rollDice, uid } from '../lib/util';
-import { CAST, LAYERS, STATUS, STATUS_MOVES, STATUS_SAVE, SURPRISE } from './data';
+import { ABILITY_RULES, CAST, LAYERS, STATUS, STATUS_MOVES, STATUS_SAVE, SURPRISE } from './data';
 import { getMove, getPokemonAny, prevoOf } from './dex';
 import { G, addLog, canEdit, isDM, owns } from './store';
 import type { AttackResult, Battle, Char, Enemy, Fighter, Move, OrderEntry, Shared, Status } from './types';
 import {
   AC, M, SAC, SHADOW_RUSH, abilityOf, XP_FINISH, addLoot, clampHP, critOn, customMove, diff, effectiveness, enemyXP, gameLvl, heldDmg, heldFx,
-  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rollChest, rollDrop, toTableMove, typesOf, tryReviver, weaponHit,
+  hpMaxOf, maxHP, nameOf, processLevelUps, prof, rollChest, rollDrop, toTableMove, treeFx, typesOf, tryReviver, weaponHit,
 } from './rules';
 
 export const BT = () => G().game.battle;
@@ -51,7 +51,7 @@ export function buildEnemy(sp: string, level: number, shadow: boolean, side: 'en
 // surprise: 'normal' | 'ambush' (foes caught the team off guard) | 'jump' (the team got the jump on the foes)
 function initRoll(x: Fighter, isTeam: boolean, surprise: string) {
   const ab = abilityOf(x);
-  const mod = M(x, 'spe') + (heldFx(x).init || 0) + (ab === 'limber' ? 2 : 0) + (ab === 'unburden' && !x.held ? 3 : 0) + (ab === 'heavy-metal' ? -2 : 0);
+  const mod = M(x, 'spe') + (heldFx(x).init || 0) + (ab === 'limber' ? 2 : 0) + (ab === 'unburden' && !x.held ? 3 : 0) + (ab === 'heavy-metal' ? -2 : 0) + 2 * treeFx(x, 'init');
   const dis = (surprise === 'ambush' && isTeam && ab !== 'inner-focus') || (surprise === 'jump' && !isTeam);
   const r1 = roll(20), r2 = dis ? roll(20) : null, d = dis ? Math.min(r1, r2!) : r1;
   return { init: d + mod, r1, r2, mod };
@@ -153,6 +153,7 @@ function onBattleWon(b: Battle) {
 export function nextTurn(depth = 0) {
   const b = BT();
   if (!b || b.result) return;
+  delete b.ask;
   for (let i = 0; i < b.order.length; i++) {
     b.turn++;
     if (b.turn >= b.order.length) {
@@ -163,6 +164,7 @@ export function nextTurn(depth = 0) {
     if (!isOut(bGet(b.order[b.turn]))) break;
   }
   const x = bGet(b.order[b.turn]), f = heldFx(x);
+  if (x && b.flags?.[x.id]?.protect) b.flags[x.id].protect = false; // Protect lasts until its user's next turn
   if (x && !isOut(x) && f.regen && x.hpCur < hpMaxOf(x)) {
     x.hpCur = Math.min(hpMaxOf(x), x.hpCur + f.regen);
     blog(`${nameOf(x)} restored a little HP with its Leftovers.`);
@@ -246,11 +248,13 @@ const onTeam = (x: Fighter) => !(x.kind === 'enemy' && x.side !== 'npc');
 
 export function toHit(actor: Fighter, mv: Move, target: Fighter) {
   const ab = abilityOf(actor), f = BT()?.flags?.[actor.id] || {};
-  let bonus = prof(actor.level) + M(actor, mv.cls === 'physical' ? 'atk' : 'spa') + fieldFor(BT(), onTeam(actor)).hit + weaponHit(actor, mv);
+  let bonus = prof(actor.level) + M(actor, mv.cls === 'physical' ? 'atk' : 'spa') + fieldFor(BT(), onTeam(actor)).hit + weaponHit(actor, mv)
+    + stageOf(actor, mv.cls === 'physical' ? 'atk' : 'spa') + stageOf(actor, 'acc') + treeFx(actor, 'hit');
   if (ab === 'unburden' && !actor.held) bonus += 1;
   if (ab === 'steadfast' && f.steady) bonus += 2;
   if (ab === 'infiltrator' && target.hpCur >= hpMaxOf(target)) bonus += 2;
-  return { bonus, def: mv.cls === 'physical' ? AC(target) : SAC(target), defName: mv.cls === 'physical' ? 'Guard' : 'Sp. Guard' };
+  const def = (mv.cls === 'physical' ? AC(target) + stageOf(target, 'def') : SAC(target) + stageOf(target, 'spd')) + stageOf(target, 'eva');
+  return { bonus, def, defName: mv.cls === 'physical' ? 'Guard' : 'Sp. Guard' };
 }
 
 /** Resolve one move and record the result on the battle so every screen can show the hit/miss popup.
@@ -267,13 +271,31 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
     res.dc = 8 + prof(actor.level) + M(actor, 'spa') + (ab === 'prankster' ? 2 : 0);
     const st = STATUS_MOVES[mv.name];
     if (st && onTeam(actor) !== onTeam(target) && !isOut(target)) {
-      const key = STATUS_SAVE[st], label = { def: 'CON', spe: 'DEX', spd: 'WIS' }[key], d = roll(20), m = M(target, key), ok = d + m >= res.dc;
-      const why = target.status ? `${tn} is already ${STATUS[target.status].n.toLowerCase()}.` : ok ? `${tn} resists!` : setStatus(target, st);
-      res.save = `${label} save ${d}${fmt(m)} = ${d + m} vs DC ${res.dc}: ${ok ? 'saved' : 'failed'}. ${why}`;
+      res.save = saveVs(target, st, res.dc);
       blog(`${who} used ${T(mv.name)} on ${tn}. ${res.save}`);
       return record();
     }
+    const sf = stageFx(mv.desc);
+    if (sf && bt) {
+      const aim = sf.who === 'self' ? [actor] : sf.who === 'target' ? [target]
+        : bt.order.map(o => bGet(o)).filter((x): x is Fighter => !!x && !isOut(x) && onTeam(x) !== aTeam);
+      res.save = aim.map(x => shiftStages(x, sf)).join(' ');
+      if (sf.who !== 'target' && aim.length) res.target = aim.map(nameOf).join(', ');
+      blog(`${who} used ${T(mv.name)}. ${res.save}`);
+      return record();
+    }
+    if (bt) {
+      res.save = supportMove(actor, mv, target, res);
+      blog(`${who} used ${T(mv.name)}. ${res.save}`);
+      return record();
+    }
     blog(`${who} used ${T(mv.name)} on ${tn}. ${mv.desc || ''} (Save DC ${res.dc})`);
+    return record();
+  }
+  if (bt?.flags?.[target.id]?.protect) {
+    flag(target.id).protect = false;
+    Object.assign(res, { hit: false, extra: `${tn} protected itself!` });
+    blog(`${who} used ${T(mv.name)} on ${tn}, but ${tn} protected itself!`);
     return record();
   }
   const key = mv.cls === 'physical' ? 'atk' : 'spa';
@@ -281,7 +303,10 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   if (ab === 'steadfast') flag(actor.id).steady = false;
   const surpriseAdv = !!bt && bt.round === 1 && ((bt.surprise === 'ambush' && !aTeam) || (bt.surprise === 'jump' && aTeam));
   // Advantage and disadvantage cancel out, as in tabletop rules.
-  const up = surpriseAdv || fld.adv, down = fld.dis, adv = !manual && up && !down, dis = !manual && down && !up;
+  // One-shot edges from abilities and support moves: this attack uses them up, hit or miss.
+  const mine = bt?.flags?.[actor.id] || {}, pow = !!mine.power, edge = !!mine.edge, off = !!mine.off;
+  if (pow || edge || off) Object.assign(flag(actor.id), { power: false, edge: false, off: false });
+  const up = surpriseAdv || fld.adv || pow || edge, down = fld.dis || off, adv = !manual && up && !down, dis = !manual && down && !up;
   const d20 = manual ? manual.d20 : adv ? Math.max(roll(20), roll(20)) : dis ? Math.min(roll(20), roll(20)) : roll(20), total = d20 + bonus;
   const crit = d20 >= critOn(actor);
   Object.assign(res, { d20, bonus, total, def, defName, adv, dis, crit, fx: fld.names.join(', ') || undefined });
@@ -297,13 +322,15 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   const dice = manual?.dmg != null ? manual.dmg : rollDice(mv.dice, crit);
   let dmg = dice + M(actor, key) + (stab ? prof(actor.level) : 0) + heldDmg(actor, mv);
   if (ab === 'rock-head' && mv.cls === 'physical') dmg += 2;
-  dmg += fld.dmg;
+  dmg += fld.dmg + stageOf(actor, key) + treeFx(actor, 'dmg');
+  if (pow) { const pb = rollDice('1d6'); dmg += pb; extra += ` Its ability adds ${pb}.`; }
   if (ab === 'flash-fire' && mv.type === 'fire' && flag(actor.id).flash) { const fb = rollDice('1d6'); dmg += fb; extra += ` Flash Fire adds ${fb}.`; }
   let eff = effectiveness(mv.type, target);
   if (tab === 'flash-fire' && mv.type === 'fire') { eff = 0; flag(target.id).flash = true; extra += ` ${tn}'s Flash Fire soaks up the flames and powers up!`; }
   if (ab === 'mold-breaker' && eff === 0.5) { eff = 1; extra += ' Mold Breaker ignores the resistance!'; }
   dmg = eff === 0 ? 0 : Math.max(1, Math.floor(dmg * eff));
   if (dmg > 0 && !aTeam && target.kind !== 'enemy') dmg = Math.max(1, Math.round(dmg * diff().dmg));
+  if (dmg > 0 && bt?.flags?.[target.id]?.guard) { dmg = Math.max(1, Math.floor(dmg / 2)); flag(target.id).guard = false; extra += ` ${tn}'s ability halves the hit!`; }
   if (dmg >= target.hpCur && target.hpCur > 1) {
     if (tab === 'sturdy' && !flag(target.id).sturdy) { dmg = target.hpCur - 1; flag(target.id).sturdy = true; extra += ` ${tn} is Sturdy and hangs on with 1 HP!`; }
     else if (heldFx(target).sash && !target.sashUsed && target.hpCur >= hpMaxOf(target)) { dmg = target.hpCur - 1; target.sashUsed = true; extra += ` ${tn} hung on with its Focus Sash!`; }
@@ -311,6 +338,9 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   target.hpCur = Math.max(0, target.hpCur - dmg);
   if (dmg > 0 && mv.type === 'fire' && target.status === 'freeze') { target.status = null; extra += ` ${tn} thawed out!`; }
   if (dmg > 0 && tab === 'steadfast') flag(target.id).steady = true;
+  // The move's own status chance (Ember 10% burn), rolled here so nobody has to remember it.
+  const side = dmg > 0 && target.hpCur > 0 && !target.status ? sideStatus(mv.desc) : null;
+  if (side && roll(100) <= side.pct) { setStatus(target, side.st); if (target.status === side.st) extra += ` ${tn} is ${STATUS[side.st].n.toLowerCase()}! ${STATUS[side.st].g}`; }
   if (heldFx(actor).lifeOrb && dmg > 0 && ab !== 'rock-head') { const rc = roll(4); actor.hpCur = Math.max(0, actor.hpCur - rc); extra += ` ${who} took ${rc} Life Orb recoil.`; }
   if (tab === 'flame-body' && mv.cls === 'physical' && dmg > 0) { const fb = roll(4); actor.hpCur = Math.max(0, actor.hpCur - fb); extra += ` ${tn}'s Flame Body burns ${who} for ${fb}.`; }
   const effTxt = eff === 0 ? " It doesn't affect them." : eff > 1 ? " It's super effective!" : eff < 1 ? " It's not very effective." : '';
@@ -322,6 +352,134 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   res.hpLeft = target.hpCur;
   res.hpMax = hpMaxOf(target);
   return record();
+}
+
+/* ---------- Automatic effects read from a move's Pokédex text ---------- */
+/** The target rolls a save against a status. Returns the line for the popup and the log. */
+function saveVs(target: Fighter, st: Status, dc: number) {
+  const key = STATUS_SAVE[st], label = { def: 'CON', spe: 'DEX', spd: 'WIS' }[key], d = roll(20), m = M(target, key), ok = d + m >= dc, tn = nameOf(target);
+  const why = target.status ? `${tn} is already ${STATUS[target.status].n.toLowerCase()}.` : ok ? `${tn} resists!` : setStatus(target, st);
+  return `${label} save ${d}${fmt(m)} = ${d + m} vs DC ${dc}: ${ok ? 'saved' : 'failed'}. ${why}`;
+}
+
+const SIDE_WORDS: Record<string, Status> = { burn: 'burn', 'badly poison': 'poison', poison: 'poison', psn: 'poison', paraly: 'paralysis', freez: 'freeze', confus: 'confusion', sleep: 'sleep', asleep: 'sleep' };
+/** A damaging move's chance to leave a status ("30% chance to paralyze the target."). Works for custom moves written the same way. */
+export function sideStatus(desc: string | undefined): { pct: number; st: Status } | null {
+  const m = /(\d+)% (?:chance to )?(?:cause the target to fall )?(burn|badly poison|poison|psn|paraly|freez|confus|sleep|asleep)/i.exec(desc || '');
+  return m ? { pct: +m[1], st: SIDE_WORDS[m[2].toLowerCase()] } : null;
+}
+
+/** Names for stat changes. Speed counts as Dodge at half strength, since turn order is fixed once a fight starts. */
+export const STAGE_NAME: Record<string, string> = { atk: 'Attack', def: 'Guard', spa: 'Sp. Atk', spd: 'Sp. Guard', spe: 'Speed', acc: 'Aim', eva: 'Dodge' };
+const STAGE_WORDS: [RegExp, string][] = [[/Sp\. ?Atk/, 'spa'], [/Sp\. ?Def/, 'spd'], [/Attack|Atk/, 'atk'], [/Defense|Def/, 'def'], [/Speed/, 'spe'], [/accuracy/, 'acc'], [/evasi/, 'eva']];
+/** What a status move does to stats ("Raises the user's Attack by 2.", "Lowers the foe(s) Defense by 1."). */
+export function stageFx(desc: string | undefined) {
+  const m = /^(Raises|Lowers) (.+?) by (\d)/.exec(desc || '');
+  if (!m) return null;
+  let rest = m[2];
+  const stats: string[] = [];
+  STAGE_WORDS.forEach(([re, k]) => { if (re.test(rest)) { stats.push(k); rest = rest.replace(re, ''); } });
+  const who: 'self' | 'foes' | 'target' = /user/.test(m[2]) ? 'self' : /foe\(s\)/.test(m[2]) ? 'foes' : 'target';
+  return stats.length ? { who, by: (m[1] === 'Raises' ? 1 : -1) * +m[3], stats } : null;
+}
+const stageOf = (x: Fighter, k: string) => BT()?.stage?.[x.id]?.[k] || 0;
+function shiftStages(x: Fighter, sf: NonNullable<ReturnType<typeof stageFx>>) {
+  const b = BT()!, s = ((b.stage ||= {})[x.id] ||= {});
+  const moved = sf.stats.filter(k => {
+    const key = k === 'spe' ? 'eva' : k, by = k === 'spe' ? Math.sign(sf.by) * Math.ceil(Math.abs(sf.by) / 2) : sf.by, old = s[key] || 0;
+    s[key] = clampN(old + by, -3, 3);
+    return s[key] !== old;
+  });
+  return moved.length ? `${nameOf(x)}'s ${moved.map(k => STAGE_NAME[k]).join(' and ')} ${sf.by > 0 ? 'rose' : 'fell'}!` : `${nameOf(x)}'s stats can't go any ${sf.by > 0 ? 'higher' : 'lower'}.`;
+}
+
+/** Every other status move, resolved from its Pokédex text: a heal, a cure, protection, or (for anything stranger) a
+    simple edge, so no status move waits on the DM. A foe saves (WIS) or attacks next with disadvantage; an ally attacks next with advantage. */
+function supportMove(actor: Fighter, mv: Move, target: Fighter, res: AttackResult): string {
+  const d = mv.desc || '', who = nameOf(actor), aTeam = onTeam(actor);
+  const team = () => BT()!.order.map(o => bGet(o)).filter((x): x is Fighter => !!x && !isOut(x) && onTeam(x) === aTeam);
+  const ally = !isOut(target) && onTeam(target) === aTeam ? target : actor;
+  const names = (xs: Fighter[]) => (res.target = xs.map(nameOf).join(', '));
+  const heal = (x: Fighter, frac: number) => { const before = x.hpCur; x.hpCur = Math.min(hpMaxOf(x), x.hpCur + Math.max(1, Math.floor(hpMaxOf(x) * frac))); return x.hpCur - before; };
+  if (mv.name === 'rest') { res.heal = heal(actor, 1); actor.status = 'sleep'; names([actor]); return `${who} heals ${res.heal} HP and falls asleep. 💤`; }
+  if (/\b(heals?|healed|restores|recovers)\b/i.test(d) && !/per turn|every turn|item|Stockpile|faint|Next turn/i.test(d)) {
+    const all = /allies/i.test(d), aim = all ? team() : [/target/i.test(d) ? ally : actor], got = aim.map(x => heal(x, all || /1\/4/.test(d) ? 0.25 : 0.5));
+    names(aim);
+    res.heal = got.reduce((a, n) => a + n, 0);
+    if (/cure/i.test(d)) aim.forEach(x => { x.status = null; });
+    return aim.map((x, i) => `${nameOf(x)} heals ${got[i]} HP.`).join(' ') + (/cure/i.test(d) ? ' Status cured.' : '');
+  }
+  if (/\bcures?\b/i.test(d)) {
+    const aim = /party|allies/i.test(d) ? team() : [/target/i.test(d) ? ally : actor];
+    aim.forEach(x => { x.status = null; });
+    return `${names(aim)}: status conditions cured.`;
+  }
+  if (/^Protects|Prevents moves from affecting|survives attacks/i.test(d)) {
+    flag(actor.id).protect = true;
+    names([actor]);
+    return `${who} braces itself: the next attack on it before its next turn is blocked.`;
+  }
+  const selfOnly = /\buser\b/i.test(d) && !/target|foe|all/i.test(d);
+  if (!selfOnly && !isOut(target) && onTeam(target) !== aTeam) {
+    const dc = res.dc || 10, r = roll(20), m = M(target, 'spd'), ok = r + m >= dc, tn = names([target]);
+    if (!ok) flag(target.id).off = true;
+    return `${d} WIS save ${r}${fmt(m)} = ${r + m} vs DC ${dc}: ${ok ? `saved. ${tn} shrugs it off.` : `failed. ${tn} is thrown off: disadvantage on its next attack.`}`;
+  }
+  const t = selfOnly ? actor : ally;
+  flag(t.id).edge = true;
+  return `${d} ${names([t])} is set up: advantage on its next attack.`;
+}
+
+/** A purified friend jumps in and uses its move with the caller's stats. Doesn't use the turn. */
+export function callAssist(actor: Char, i: number, target: Fighter | null) {
+  const a = actor.assists?.[i];
+  if (!a || a.used) return;
+  if (!target) throw new Error('Pick a target first.');
+  let mv: Move;
+  try { mv = { ...toTableMove(getMove(a.move)), ppMax: null }; } catch { mv = customMove(a.move, 'normal', 'physical', '1d8', null); }
+  a.used = true;
+  blog(`${nameOf(actor)} calls in ${a.name}!`);
+  const res = resolveMove(actor, mv, target);
+  if (res) res.actor = `${a.name} (${nameOf(actor)}'s assist)`;
+  checkEnd();
+}
+
+/* ---------- Abilities a player triggers ---------- */
+/** The ability button for a hero, or null when its ability works on its own (Sturdy, Flash Fire…). */
+export function abilityInfo(x: Fighter) {
+  if (x.kind === 'enemy') return null;
+  const hb = x.homebrew?.state === 'approved' ? x.homebrew : null, ab = abilityOf(x);
+  if (!hb && (!ab || ABILITY_RULES[ab])) return null;
+  const max = 1 + treeFx(x, 'uses'), spent = BT()?.uses?.[x.id] || 0;
+  return { name: hb ? hb.name : T(ab), desc: hb?.desc || '', fx: hb?.fx, used: spent >= max, left: max - spent };
+}
+/** Trigger the acting hero's ability: it resolves itself, once per battle (more with skill-tree entries), and doesn't use the turn.
+    One without a chosen effect gives advantage on the next attack. Throws (changing nothing) if it can't be used. */
+export function triggerAbility(actor: Fighter, target: Fighter | null) {
+  const info = abilityInfo(actor), bt = BT();
+  if (!info || !bt) return;
+  const who = nameOf(actor), fx = info.fx;
+  const res: AttackResult = { id: uid(), actor: who, actorSide: 'team', target: who, move: info.name, moveType: typesOf(actor)[0] || 'normal', status: true, ability: true };
+  if (info.used) throw new Error(`${info.name} was already used this battle.`);
+  if (!fx) { flag(actor.id).edge = true; res.save = `${info.desc} ${who} is fired up: advantage on its next attack.`.trim(); }
+  else {
+    if (fx.kind === 'status') {
+      if (!target || isOut(target) || onTeam(target) === onTeam(actor)) throw new Error('Pick a foe as the target first.');
+      res.target = nameOf(target);
+      res.dc = 8 + prof(actor.level) + Math.max(M(actor, 'atk'), M(actor, 'spa'));
+      res.save = saveVs(target, fx.status || 'burn', res.dc);
+    } else if (fx.kind === 'heal') {
+      const t = target && !isOut(target) && onTeam(target) === onTeam(actor) ? target : actor, amt = rollDice('2d6') + prof(actor.level), before = t.hpCur;
+      t.hpCur = Math.min(hpMaxOf(t), t.hpCur + amt);
+      res.target = nameOf(t);
+      res.heal = t.hpCur - before;
+      res.save = `${nameOf(t)} heals ${res.heal} HP.`;
+    } else if (fx.kind === 'power') { flag(actor.id).power = true; res.save = `${who}'s next attack rolls with advantage and deals +1d6 damage.`; }
+    else { flag(actor.id).guard = true; res.save = `The next hit on ${who} deals half damage.`; }
+  }
+  (bt.uses ||= {})[actor.id] = (bt.uses[actor.id] || 0) + 1;
+  blog(`${who} used its ability, ${info.name}! ${res.save}`);
+  bt.last = res;
 }
 
 /** Enemy or NPC picks a target and a move on its own: usually the best type match, sometimes random. */

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Avatar, HpBar, RarChip, TypeChip, Types, XpBlock, run } from '../components/common';
-import { ABILITY_RULES, CHART, MASTERY, STATS, TYPES } from '../game/data';
+import { ABILITY_FX, ABILITY_RULES, CHART, MASTERY, STATS, STATUS, TREE_FX, TYPES } from '../game/data';
 import { dex, dexInfo, evoLine, getMove, loadInfo } from '../game/dex';
 import {
   AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, diceFor, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
-  slotOf, weaponHit,
+  slotOf, weaponHit, abilityFxText,
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
-import type { Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
+import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
 import { T, setPath, slug, toID, fmt, readImage, roll } from '../lib/util';
 
 const DM_FIELD = /^(shiny|player|evoChoice|evoLevel|bonus\.|heart|types\.|awakenedType|base\.|abilitiesText|nickname|tree\..*\.(label|name|desc)$)/;
@@ -177,16 +177,19 @@ function AbilityCard({ c }: { c: Char }) {
   const dm = isDM(), edit = canEdit(c), cur = c.ability || c.abilities[0] || '', hb = c.homebrew, on = hb?.state === 'approved';
   const [name, setName] = useState(hb?.name || '');
   const [desc, setDesc] = useState(hb?.desc || '');
+  const [kind, setKind] = useState<AbilityFx['kind'] | ''>(hb ? hb.fx?.kind || '' : 'status');
+  const [st, setSt] = useState<NonNullable<AbilityFx['status']>>(hb?.fx?.status || 'burn');
   const dexText = (a: string) => dexInfo()?.aId[toID(a)]?.[1];
   const send = () => {
     if (!name.trim() || desc.trim().length < 10) return toast('Give the ability a name and describe what it does.', 'bad');
-    withChar(c.id, x => { x.homebrew = { name: name.trim(), desc: desc.trim(), state: 'pending' }; addLog(`${nameOf(x)} proposed a homebrew ability: ${name.trim()}.`); });
+    const fx: AbilityFx | undefined = kind ? { kind, ...(kind === 'status' ? { status: st } : {}) } : undefined;
+    withChar(c.id, x => { x.homebrew = { name: name.trim(), desc: desc.trim(), state: 'pending', ...(fx ? { fx } : {}) }; addLog(`${nameOf(x)} proposed a homebrew ability: ${name.trim()}.`); });
     toast('Sent to Dennis for approval.');
   };
   return (
     <details className="card" open={hb?.state === 'pending'}>
       <summary>Ability: {on ? hb!.name : T(cur)}</summary>
-      {on ? <div className="banner"><b>{hb!.name}</b> (homebrew, approved): {hb!.desc} <span className="muted">The DM applies its effect.</span></div> : null}
+      {on ? <div className="banner"><b>{hb!.name}</b> (homebrew, approved): {hb!.desc} <span className="muted">{abilityFxText(hb!.fx)} Tap “Use” on your turn in battle.</span></div> : null}
       <label>Preset ability{on ? ' (replaced by the homebrew one)' : ''}
         <select value={cur} disabled={!edit || c.inDungeon || on} onChange={e => withChar(c.id, x => { x.ability = e.target.value; addLog(`${nameOf(x)} now uses ${T(e.target.value)}.`); })}>
           {c.abilities.map(a => <option key={a} value={a}>{T(a)}</option>)}
@@ -196,13 +199,28 @@ function AbilityCard({ c }: { c: Char }) {
       {c.inDungeon ? <p className="small muted" style={{ margin: '4px 0 0' }}>Locked during the dungeon run, like moves.</p> : null}
       <h3>Homebrew ability</h3>
       {hb?.state === 'pending' ? <>
-        <p className="small" style={{ margin: '0 0 6px' }}><b>Waiting for Dennis:</b> {hb.name}: {hb.desc}</p>
+        <p className="small" style={{ margin: '0 0 6px' }}><b>Waiting for Dennis:</b> {hb.name}: {hb.desc} <span className="muted">{abilityFxText(hb.fx)}</span></p>
         {dm ? <HomebrewDmButtons c={c} /> : null}
       </> : on ? (dm ? <HomebrewDmButtons c={c} /> : null) : <>
-        <p className="small muted" style={{ marginTop: 0 }}>Invent your own ability. Once Dennis approves it, it replaces the preset one.</p>
+        <p className="small muted" style={{ marginTop: 0 }}>Invent your own ability. Pick what it does in battle and the app resolves it when you tap it on your turn (once per battle). Once Dennis approves it, it replaces the preset one.</p>
         <div className="grid2 stack">
           <label>Name<input value={name} disabled={!edit} onChange={e => setName(e.target.value)} placeholder="e.g. Wax Shield" /></label>
           <label>What it does<input value={desc} disabled={!edit} onChange={e => setDesc(e.target.value)} placeholder="e.g. Once per battle, halve the damage of one hit." /></label>
+        </div>
+        <div className="grid2 stack" style={{ marginTop: 8 }}>
+          <label>What it does in battle
+            <select value={kind} disabled={!edit} onChange={e => setKind(e.target.value as AbilityFx['kind'] | '')}>
+              {Object.entries(ABILITY_FX).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <option value="">Something else: advantage on your next attack</option>
+            </select>
+          </label>
+          {kind === 'status' ? (
+            <label>Which status
+              <select value={st} disabled={!edit} onChange={e => setSt(e.target.value as NonNullable<AbilityFx['status']>)}>
+                {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.g} {v.n}: {v.d}</option>)}
+              </select>
+            </label>
+          ) : null}
         </div>
         {edit ? <div className="row" style={{ marginTop: 8 }}><button className="btn" onClick={send}>Send to Dennis</button></div> : null}
       </>}
@@ -482,14 +500,61 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
   );
 }
 
+/** Approve or reject a player's own skill-tree entry (sheet and DM tools). */
+export function TreePropButtons({ c, b, i }: { c: Char; b: Branch; i: number }) {
+  const set = (ok: boolean) => run(() => update(s => {
+    const x = s.chars.find(y => y.id === c.id), nd = x?.tree[b].nodes[i];
+    if (!x || !nd?.prop || !isDM()) return;
+    if (ok) {
+      nd.name = nd.prop.name; nd.desc = nd.prop.desc;
+      if (nd.prop.fx) nd.fx = nd.prop.fx; else delete nd.fx;
+      addLog(`Dennis approved ${nameOf(x)}'s skill tree entry, ${nd.name}.`);
+    } else addLog(`Dennis turned down ${nameOf(x)}'s skill tree entry, ${nd.prop.name}.`);
+    delete nd.prop;
+    clampHP(x);
+  }));
+  return <div className="row" style={{ gap: 6, marginTop: 4 }}><button className="btn sm primary" onClick={() => set(true)}>Approve</button><button className="btn sm" onClick={() => set(false)}>Reject</button></div>;
+}
+
+/** One skill-tree entry's text and bonus. The DM's changes apply at once; a player's go to the DM for approval. */
+function NodeForm({ c, b, i }: { c: Char; b: Branch; i: number }) {
+  const dm = isDM(), n = c.tree[b].nodes[i], src = dm ? n : n.prop || n;
+  const [name, setName] = useState(src.name);
+  const [desc, setDesc] = useState(src.desc);
+  const [fx, setFx] = useState(src.fx || '');
+  const same = name === src.name && desc === src.desc && fx === (src.fx || '') && (dm || !!n.prop);
+  const save = () => {
+    if (!name.trim() || !desc.trim()) return toast('Give the entry a name and say what it does.', 'bad');
+    const v = { name: name.trim(), desc: desc.trim(), ...(fx ? { fx } : {}) };
+    withChar(c.id, x => {
+      const nd = x.tree[b].nodes[i];
+      if (isDM()) { nd.name = v.name; nd.desc = v.desc; if (fx) nd.fx = fx; else delete nd.fx; delete nd.prop; clampHP(x); }
+      else { nd.prop = v; addLog(`${nameOf(x)} wrote a skill tree entry for Dennis to approve: ${v.name}.`); }
+    });
+    toast(dm ? 'Saved.' : 'Sent to Dennis for approval.');
+  };
+  return (
+    <div className="node">
+      <input value={name} aria-label="Skill name" maxLength={40} onChange={e => setName(e.target.value)} />
+      <textarea rows={2} value={desc} aria-label="What it does" maxLength={200} onChange={e => setDesc(e.target.value)} />
+      <select value={fx} aria-label="Bonus the app applies" onChange={e => setFx(e.target.value)}>
+        <option value="">No automatic bonus</option>
+        {Object.entries(TREE_FX).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select>
+      <button className="btn sm" style={{ marginTop: 4 }} disabled={same} onClick={save}>{dm ? 'Save' : n.prop ? (same ? 'Waiting for Dennis' : 'Send again') : 'Send to Dennis'}</button>
+    </div>
+  );
+}
+
 function SkillTree({ c }: { c: Char }) {
-  const dm = isDM(), avail = pointsOf(c);
+  const dm = isDM(), edit = canEdit(c), avail = pointsOf(c);
   const [editing, setEditing] = useState(false);
   const tap = (b: Branch, i: number) => withChar(c.id, x => {
     const nodes = x.tree[b].nodes, n = nodes[i];
     if (n.on) {
       if (nodes[i + 1]?.on) { toast('Refund the lower skills first.', 'bad'); return; }
       n.on = false;
+      clampHP(x);
     } else {
       if (i > 0 && !nodes[i - 1].on) { toast('Unlock the skill above first.', 'bad'); return; }
       if (pointsOf(x) <= 0) { toast('No skill points left. Level up or earn a Blessing to get more.', 'bad'); return; }
@@ -501,20 +566,29 @@ function SkillTree({ c }: { c: Char }) {
     <details className="card">
       <summary>Skill tree · {avail ? `✨ ${avail} point${avail === 1 ? '' : 's'} to spend` : 'no points left'}</summary>
       <div className="row between small muted" style={{ marginBottom: 8 }}>
-        <span>1 point per level, +1 per Blessing. Unlock top to bottom. Tap the last one to refund it.</span>
-        {dm ? <button className="btn sm" onClick={() => setEditing(!editing)}>{editing ? 'Done editing' : 'Edit text'}</button> : null}
+        <span>{editing && !dm ? 'Rewrite any entry and pick a bonus for the app to apply. Dennis approves each one before it counts.' : '1 point per level, +1 per Blessing. Unlock top to bottom. Tap the last one to refund it.'}</span>
+        {edit ? <button className="btn sm" onClick={() => setEditing(!editing)}>{editing ? 'Done' : dm ? 'Edit entries' : '✏️ Write my own entries'}</button> : null}
       </div>
       <div className="tree">
         {(['ability', 'special', 'physical'] as const).map(b => (
           <div className="branch" key={b}>
             <h4>{editing && dm ? <Field id={c.id} f={`tree.${b}.label`} value={c.tree[b].label} aria-label="Branch name" /> : c.tree[b].label}</h4>
-            {c.tree[b].nodes.map((n, i) => editing && dm ? (
-              <div className="node" key={i}>
-                <Field id={c.id} f={`tree.${b}.nodes.${i}.name`} value={n.name} aria-label="Skill name" />
-                <Field id={c.id} f={`tree.${b}.nodes.${i}.desc`} value={n.desc} area rows={2} />
+            {b === 'ability' && c.homebrew?.state === 'approved' ? <p className="small" style={{ margin: '0 0 6px' }}>✨ <b>{c.homebrew.name}</b>: {abilityFxText(c.homebrew.fx)}</p> : null}
+            {c.tree[b].nodes.map((n, i) => (
+              <div key={i}>
+                {editing ? <NodeForm key={n.name + n.desc + (n.fx || '') + (n.prop?.name || '')} c={c} b={b} i={i} /> : (
+                  <button className={`node ${n.on ? 'on' : ''}`} aria-pressed={n.on} onClick={() => tap(b, i)}>
+                    <b>{n.on ? '✔ ' : ''}{n.name}</b><span>{n.desc}</span>
+                    {n.fx ? <span className="nodefx">{TREE_FX[n.fx]} · applied automatically</span> : null}
+                  </button>
+                )}
+                {n.prop ? (
+                  <div className="small" style={{ margin: '-2px 0 8px' }}>
+                    ⏳ <b>Waiting for Dennis:</b> {n.prop.name}: {n.prop.desc}{n.prop.fx ? ` (${TREE_FX[n.prop.fx]})` : ''}
+                    {dm ? <TreePropButtons c={c} b={b} i={i} /> : null}
+                  </div>
+                ) : null}
               </div>
-            ) : (
-              <button key={i} className={`node ${n.on ? 'on' : ''}`} aria-pressed={n.on} onClick={() => tap(b, i)}><b>{n.on ? '✔ ' : ''}{n.name}</b><span>{n.desc}</span></button>
             ))}
           </div>
         ))}

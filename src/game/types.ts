@@ -10,10 +10,14 @@ export interface Move {
 export interface BagItem { name: string; qty: number; note: string; itemId: string; tm: string }
 export interface Held { itemId: string; name: string }
 export interface EvoTarget { name: string; minLevel: number | null; how: string }
-export interface TreeNode { name: string; desc: string; on: boolean }
+/** `fx` is a bonus the engine applies while the entry is unlocked (see TREE_FX). `prop` is a player's own entry, waiting for the DM. */
+export interface TreeNode { name: string; desc: string; on: boolean; fx?: string; prop?: { name: string; desc: string; fx?: string } }
 export type Branch = 'ability' | 'special' | 'physical';
 export type Tree = Record<Branch, { label: string; nodes: TreeNode[] }>;
 export interface Assist { name: string; move: string; note: string; used: boolean }
+
+/** What a player-made ability does when its player triggers it in battle. Without one, the DM resolves it. */
+export interface AbilityFx { kind: 'status' | 'heal' | 'power' | 'guard'; status?: Status }
 
 /** Fields shared by heroes and enemies, so rules functions can take either. */
 export type Status = 'burn' | 'poison' | 'paralysis' | 'sleep' | 'freeze' | 'confusion';
@@ -36,7 +40,7 @@ export interface Char extends Mon {
   /** Chosen preset ability (slug). Defaults to the first in `abilities`. */
   ability?: string;
   /** Player-made ability. Once the DM approves it, it replaces the preset one. */
-  homebrew?: { name: string; desc: string; state: 'draft' | 'pending' | 'approved' };
+  homebrew?: { name: string; desc: string; state: 'draft' | 'pending' | 'approved'; fx?: AbilityFx };
 }
 export interface Enemy extends Mon {
   kind: 'enemy'; side: 'enemy' | 'npc'; name: string; shadow: boolean; heartGauge: number; hpMax: number;
@@ -56,6 +60,10 @@ export interface AttackResult {
   ko?: boolean; hpLeft?: number; hpMax?: number; manual?: boolean; dis?: boolean; fx?: string;
   /** A status move the engine resolved: the save line, e.g. "WIS save 9 + 1 = 10 vs DC 13: failed. Asleep!" */
   save?: string;
+  /** A triggered ability rather than a move. */
+  ability?: boolean;
+  /** HP restored, for the green number on the battle scene. */
+  heal?: number;
 }
 /** A creative moment in battle (e.g. Fire on Water makes Steam Fog). Helps `side` until `rounds` runs out. */
 export interface FieldFx { id: string; name: string; side: 'team' | 'enemy'; kind: 'adv' | 'dis' | 'hit' | 'dmg'; amt: number; rounds: number; note?: string }
@@ -68,13 +76,20 @@ export interface Battle {
   /** Per-battle ability state, by fighter id (e.g. Sturdy used, Flash Fire powered up). */
   flags?: Record<string, Record<string, boolean>>;
   fx?: FieldFx[];
+  /** Times each hero has triggered its ability this battle. */
+  uses?: Record<string, number>;
+  /** A player picked this move and is rolling real dice; the DM types the result in. */
+  ask?: { move: number; target: string };
+  /** Stat changes from moves like Growl and Swords Dance, by fighter id: -3 to +3 each, until the battle ends. */
+  stage?: Record<string, Record<string, number>>;
   /** Background image name (public/backgrounds/<bg>.webp) and the layer whose drawn scene shows until that image exists. */
   bg?: string; scene?: number;
 }
 
-/** Something every device shows once: a level-up (to its owner), an evolution or a Mega Evolution (to everyone). */
+/** Something every device shows once: a level-up (to its owner), an evolution or a Mega Evolution (to everyone).
+    'item' never leaves the device: it is the card a player sees when someone gives them an item. */
 export interface GameEvent {
-  id: string; t: number; kind: 'level' | 'evo' | 'mega'; char: string; name: string; level?: number; notes?: string[];
+  id: string; t: number; kind: 'level' | 'evo' | 'mega' | 'item'; char: string; name: string; level?: number; notes?: string[];
   from?: string; to?: string; species?: string; form?: string; types?: string[]; shiny?: boolean;
 }
 
@@ -112,7 +127,7 @@ export interface Shared {
   game: { battle: Battle | null; bsetup: { pcs: string[]; enemies: Enemy[] }; events?: GameEvent[] };
   dungeon: Dungeon;
   loot: { lines: LootLine[] };
-  rules: { difficulty: string };
+  rules: { difficulty: string; /** Players roll real dice for attacks and the DM types them in. */ ownDice?: boolean };
   world: World;
   storage: { items: BagItem[]; poke: number };
   log: { entries: LogEntry[] };

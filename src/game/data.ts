@@ -398,4 +398,17 @@ export const STATUS_MOVES: Record<string, 'burn' | 'poison' | 'paralysis' | 'sle
   'confuse-ray': 'confusion', supersonic: 'confusion', swagger: 'confusion', 'sweet-kiss': 'confusion', 'teeter-dance': 'confusion', flatter: 'confusion',
 };
 /** Which stat saves against each status: CON (Defense) toughs out paralysis and poison, DEX (Speed) dodges a burn, WIS (Sp. Def) resists sleep and confusion. */
-export const STATUS_SAVE = { paralysis: 'def', poison: 'def', burn: 'spe', sleep: 'spd', confusion: 'spd' } as const;
+export const STATUS_SAVE = { paralysis: 'def', poison: 'def', freeze: 'def', burn: 'spe', sleep: 'spd', confusion: 'spd' } as const;
+
+/** Battle effects a player-made ability can have. The engine resolves them when the player triggers the ability, once per battle. */
+export const ABILITY_FX: Record<string, string> = {
+  status: 'Give a foe a status (the foe rolls a save)',
+  heal: 'Heal yourself or an ally: 2d6 + proficiency HP',
+  power: 'Power up your next attack: advantage and +1d6 damage',
+  guard: 'Shield: the next hit on you deals half damage',
+};
+
+/** Bonuses a skill-tree entry can carry. The engine applies each one while its entry is unlocked. */
+export const TREE_FX: Record<string, string> = {
+  hit: '+1 to hit', dmg: '+1 damage', guard: '+1 Guard', spguard: '+1 Sp. Guard', hp: '+4 max HP', init: '+2 initiative', uses: '+1 ability use per battle',
+};

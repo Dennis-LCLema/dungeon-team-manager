@@ -5,7 +5,7 @@
    A battle change goes out at once, together with the HP and PP it changed, as one all-or-nothing commit that the
    database only accepts if nobody changed the battle first (where the database supports it: Firebase does).
    So a move is never half-applied, and a phone that was asleep can't overwrite newer turns with an old one. */
-import { G, getUi, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast } from './store';
+import { G, getUi, remote, replaceFromRemote, setLocalChangeHandler, setRemote, toast, trimLog } from './store';
 import type { Char, LogEntry, Shared, SharedDocKey } from './types';
 import { stable, uid } from '../lib/util';
 import { FIREBASE_CONFIG, firebaseDb, gameCode } from './firebase';
@@ -152,7 +152,7 @@ function onGame(raw: GameDoc, first = false) {
 function mergeLog(a: Shared['log'], b: Shared['log']) {
   const seen: Record<string, LogEntry> = {};
   [...(a.entries || []), ...(b.entries || [])].forEach(e => { if (e?.id) seen[e.id] = e; });
-  return { entries: Object.values(seen).sort((x, y) => y.t - x.t).slice(0, 80) };
+  return { entries: trimLog(Object.values(seen).sort((x, y) => y.t - x.t)) };
 }
 
 /** Two phones changed the World at once: take theirs, then put my own vote back (each player only ever changes their own). */

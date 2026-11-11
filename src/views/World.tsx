@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Avatar, InCharacter, TypeChip, Types, run } from '../components/common';
 import { mapDecor } from '../components/mapDecor';
 import { SellList, ShopList, buy } from '../components/Shop';
-import { CAST, ITEM_BY_ID, KIND, STARTER_QUESTS, TEAMS, type CastMember, LAB_FLOORS, LAYERS, TCOL, labLvl, layerLvl, ringOf } from '../game/data';
+import { CAST, ITEM_BY_ID, KIND, STARTER_QUESTS, TEAMS, TYPES, type CastMember, LAB_FLOORS, LAYERS, TCOL, labLvl, layerLvl, ringOf } from '../game/data';
 import { rollSurprise, startBattle, startRivalSpar } from '../game/battle';
 import { arriveLayer, exploreWild, layerClosed, layerNodes, nodeById, prepRun, rollHavenShop, type WorldNode } from '../game/explore';
 import { addItemTo, addLoot, defByName, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
-import { G, addLog, isDM, me, owns, setUi, toast, update, useGame } from '../game/store';
-import type { Enemy, Fighter } from '../game/types';
+import { G, addLog, ask, isDM, me, owns, setUi, toast, update, useGame } from '../game/store';
+import type { Enemy, Fighter, World } from '../game/types';
 import { getPokemonAny } from '../game/dex';
 import { T, money, uid } from '../lib/util';
 
@@ -202,11 +202,16 @@ function AreaPanel({ n, k }: { n: WorldNode; k: number }) {
 
 const BOND = ['Enemies', 'Tense', 'Neutral', 'Friendly', 'Close friends'];
 
+/** The built-in story cast plus the characters the DM added in the app. */
+const allCast = (w: World): CastMember[] => [...CAST, ...(w.people || [])];
+const castTypes = (c: CastMember) => { if (c.types?.length) return c.types; try { return getPokemonAny(c.species).types; } catch { return []; } };
+const whereOf = (c: CastMember) => (c.team ? TEAMS[c.team].n : c.layer == null ? 'Roams every layer' : LAYERS[c.layer]?.n || '');
+
 function CastRow({ c, k }: { c: CastMember; k: number }) {
   const s = useGame(), dm = isDM(), met = s.world.met[c.id], bond = bondOf(s.world.bond, c.id);
-  let types: string[] = [];
-  try { types = getPokemonAny(c.species).types; } catch { /* custom species: no types */ }
+  const types = castTypes(c), note = s.world.notes?.[c.id] || '', when = s.world.metAt?.[c.id];
   const face = { id: c.id, species: c.species.toLowerCase(), types } as unknown as Fighter;
+  const custom = c.id.startsWith('p:');
   const setBond = (v: number) => update(d => { d.world.bond[c.id] = Math.max(-2, Math.min(2, v)); });
   const price = healPrice(k, bond);
   const heal = () => run(() => update(d => {
@@ -221,9 +226,14 @@ function CastRow({ c, k }: { c: CastMember; k: number }) {
       <Avatar c={face} size={40} />
       <span className="grow" style={{ minWidth: 200 }}>
         <b>{c.name}</b> <span className="small muted">{c.species}{c.level ? ' · Lv ' + c.level : ''} · {c.role}</span>
+        <div className="row" style={{ gap: 4, margin: '2px 0' }}><Types x={face} /></div>
         <div className="small">{c.desc}</div>
         {dm && c.secret ? <div className="small" style={{ marginTop: 4 }}><b>DM only:</b> {c.secret}</div> : null}
-        {met ? <div className="small" style={{ marginTop: 4 }}>Gets along: <b>{BOND[bond + 2]}</b></div> : null}
+        {met ? <div className="small" style={{ marginTop: 4 }}>Gets along: <b>{BOND[bond + 2]}</b>{when ? <span className="muted"> · met {new Date(when).toLocaleDateString()}</span> : null}</div> : null}
+        {dm ? (
+          <textarea key={c.id + note} rows={2} defaultValue={note} style={{ marginTop: 6 }} placeholder="What happened when the team met them? What did they talk about? (players can read this)" aria-label={`Notes about meeting ${c.name}`}
+            onBlur={e => { const v = e.target.value.trim(); if (v !== note) update(d => { (d.world.notes ||= {})[c.id] = v; }); }} />
+        ) : note ? <div className="small" style={{ marginTop: 4 }}><b>What happened:</b> {note}</div> : null}
       </span>
       {dm ? <span className="row" style={{ gap: 4 }}>
         {met ? <>
@@ -231,7 +241,8 @@ function CastRow({ c, k }: { c: CastMember; k: number }) {
           <button className="btn sm" aria-label={`Better with ${c.name}`} disabled={bond >= 2} onClick={() => setBond(bond + 1)}>+</button>
         </> : null}
         <button className={`btn sm ${met ? 'primary' : ''}`} aria-pressed={!!met}
-          onClick={() => update(d => { d.world.met[c.id] = !d.world.met[c.id]; if (d.world.met[c.id]) addLog(`The team met ${c.name}.`); })}>{met ? 'Met' : 'Mark met'}</button>
+          onClick={() => update(d => { d.world.met[c.id] = !d.world.met[c.id]; if (d.world.met[c.id]) { (d.world.metAt ||= {})[c.id] = Date.now(); addLog(`The team met ${c.name}.`, 'story'); } })}>{met ? 'Met' : 'Mark met'}</button>
+        {custom ? <button className="btn sm ghost danger" aria-label={`Delete ${c.name}`} onClick={() => run(async () => { if (await ask(`Delete ${c.name} from the characters?`, 'Delete')) update(d => { d.world.people = (d.world.people || []).filter(p => p.id !== c.id); delete d.world.met[c.id]; }); })}>✕</button> : null}
         {c.id === 'mabel' && met ? <button className="btn sm" disabled={price == null} onClick={heal}>
           {price == null ? 'Refuses to heal' : `Field heal (${price ? money(price) : 'free'})`}</button> : null}
       </span> : null}
@@ -242,14 +253,81 @@ function CastRow({ c, k }: { c: CastMember; k: number }) {
 /** Story characters for this layer, plus anyone roaming. Players see only the ones the DM marked as met; secrets are DM-only. */
 function CastCard({ k }: { k: number }) {
   const s = useGame(), dm = isDM();
-  const list = CAST.filter(c => !c.team && (c.layer == null || c.layer === k) && (dm || s.world.met[c.id]));
-  if (!list.length) return null;
+  const list = allCast(s.world).filter(c => !c.team && (c.layer == null || c.layer === k) && (dm || s.world.met[c.id]));
+  if (!list.length && !dm) return null;
   return (
     <section className="card">
       <h2>Characters in {LAYERS[k].n}</h2>
       <p className="small muted" style={{ marginTop: 0 }}>{dm ? 'Mark who the team has met, then use − and + as the players get along with them. Players never see the DM notes.' : 'Pokémon the team has met here, and how you get along.'}</p>
       {list.map(c => <CastRow key={c.id} c={c} k={k} />)}
+      {dm ? <AddPerson k={k} /> : null}
     </section>
+  );
+}
+
+/** The DM adds a character the team ran into: name, Pokémon, and what the players should remember. */
+function AddPerson({ k }: { k: number }) {
+  const blank = { name: '', species: '', type: '', role: '', desc: '', secret: '', roams: false, met: true };
+  const [f, setF] = useState(blank);
+  const set = (p: Partial<typeof blank>) => setF({ ...f, ...p });
+  const add = () => run(() => {
+    if (!f.name.trim() || !f.species.trim()) return toast('Give the character a name and a Pokémon.', 'bad');
+    let known = true;
+    try { getPokemonAny(f.species); } catch { known = false; }
+    if (!known && !f.type) return toast(`"${f.species}" isn't in the Pokédex. Pick its type so players can see it.`, 'bad');
+    update(d => {
+      const id = 'p:' + uid();
+      (d.world.people ||= []).push({ id, name: f.name.trim(), species: f.species.trim(), role: f.role.trim() || 'Someone the team met', desc: f.desc.trim(),
+        ...(f.secret.trim() ? { secret: f.secret.trim() } : {}), ...(f.roams ? {} : { layer: k }), ...(f.type ? { types: [f.type] } : {}) });
+      if (f.met) { d.world.met[id] = true; (d.world.metAt ||= {})[id] = Date.now(); addLog(`The team met ${f.name.trim()}.`, 'story'); }
+    });
+    setF(blank);
+    toast(`${f.name.trim()} was added.`);
+  });
+  return (
+    <details style={{ marginTop: 10 }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 700 }}>➕ Add a character</summary>
+      <div className="grid2 stack" style={{ marginTop: 8 }}>
+        <label>Name<input value={f.name} maxLength={40} onChange={e => set({ name: e.target.value })} placeholder="e.g. Old Finn" /></label>
+        <label>Pokémon<input list="speciesList" autoComplete="off" value={f.species} maxLength={30} onChange={e => set({ species: e.target.value })} placeholder="e.g. Slowking" /></label>
+        <label>Type (only for a Pokémon that isn't in the Pokédex)
+          <select value={f.type} onChange={e => set({ type: e.target.value })}><option value="">Use the Pokémon's own type</option>{TYPES.map(t => <option key={t} value={t}>{T(t)}</option>)}</select>
+        </label>
+        <label>Who they are<input value={f.role} maxLength={60} onChange={e => set({ role: e.target.value })} placeholder="e.g. Ferry keeper" /></label>
+      </div>
+      <label style={{ marginTop: 8 }}>What players should know<textarea rows={2} value={f.desc} maxLength={300} onChange={e => set({ desc: e.target.value })} /></label>
+      <label style={{ marginTop: 8 }}>DM-only secret (optional)<textarea rows={2} value={f.secret} maxLength={300} onChange={e => set({ secret: e.target.value })} /></label>
+      <div className="row" style={{ marginTop: 8, gap: 14 }}>
+        <label className="row" style={{ flexDirection: 'row', gap: 6 }}><input type="checkbox" checked={f.met} onChange={e => set({ met: e.target.checked })} /> The team has met them</label>
+        <label className="row" style={{ flexDirection: 'row', gap: 6 }}><input type="checkbox" checked={f.roams} onChange={e => set({ roams: e.target.checked })} /> Roams every layer (otherwise: {LAYERS[k].n})</label>
+        <button className="btn primary" onClick={add}>Add character</button>
+      </div>
+    </details>
+  );
+}
+
+/** Everyone the team has met, on any layer, newest first: who they are, their type, and what happened. For players to check back. */
+function Glossary() {
+  const s = useGame(), w = s.world;
+  const met = allCast(w).filter(c => w.met[c.id]).sort((a, b) => (w.metAt?.[b.id] || 0) - (w.metAt?.[a.id] || 0));
+  return (
+    <details className="card">
+      <summary>📖 Glossary: everyone the team has met ({met.length})</summary>
+      {met.length ? met.map(c => {
+        const face = { id: c.id, species: c.species.toLowerCase(), types: castTypes(c) } as unknown as Fighter, when = w.metAt?.[c.id];
+        return (
+          <div className="list-item" key={c.id} style={{ alignItems: 'flex-start' }}>
+            <Avatar c={face} size={36} />
+            <span className="grow">
+              <b>{c.name}</b> <span className="small muted">{c.species} · {c.role}</span>
+              <div className="row" style={{ gap: 4, margin: '2px 0' }}><Types x={face} /><span className="small muted">{whereOf(c)}{when ? ` · met ${new Date(when).toLocaleDateString()}` : ''}</span></div>
+              <div className="small">{c.desc}</div>
+              {w.notes?.[c.id] ? <div className="small" style={{ marginTop: 4 }}><b>What happened:</b> {w.notes[c.id]}</div> : null}
+            </span>
+          </div>
+        );
+      }) : <p className="small muted">Nobody yet. Characters show up here once the team meets them.</p>}
+    </details>
   );
 }
 
@@ -389,7 +467,7 @@ export default function WorldView() {
   );
   if (view === 'quests') return <>{tabs}<QuestCard /></>;
   // Meeting someone? Each player sees how their own Pokémon acts; the DM sees everyone's, to reward it.
-  if (view === 'people') return <>{tabs}{G().chars.filter(c => dm || owns(c)).map(c => <InCharacter key={c.id} c={c} />)}<TeamsCard k={k} /><CastCard k={k} /></>;
+  if (view === 'people') return <>{tabs}{G().chars.filter(c => dm || owns(c)).map(c => <InCharacter key={c.id} c={c} />)}<Glossary /><TeamsCard k={k} /><CastCard k={k} /></>;
   return (
     <>
       {tabs}

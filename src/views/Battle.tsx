@@ -3,7 +3,7 @@ import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { Die, stillMotion } from '../components/Dice';
 import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { STAGE_NAME, abilityInfo, callAssist, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, abilityInfo, callAssist, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, abilityFxText, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
@@ -218,7 +218,16 @@ function TurnPanel({ b }: { b: Battle }) {
     const mv = (c0.ref === 'pc' ? equippedOf(a as Char) : a.moves)[i], t = target(G());
     if (!mv) return;
     if (!t) { toast('No target.', 'bad'); return; }
-    resolveMove(a, mv, t, manual);
+    // Out of PP (the button is off, but two taps or a stale screen can still get here): keep the turn.
+    if (!resolveMove(a, mv, t, manual)) { toast(`${T(mv.name)} is out of PP. Pick another move.`, 'bad'); return; }
+    checkEnd();
+    nextTurn();
+  });
+  const noPunch = isPc && !moves.some(m => m.dice && m.cls !== 'status' && (m.ppMax == null || m.ppCur > 0));
+  const doStruggle = () => onTurn((_bb, _c, a) => {
+    const t = target(G());
+    if (!t) { toast('No target.', 'bad'); return; }
+    resolveMove(a, struggle(), t);
     checkEnd();
     nextTurn();
   });
@@ -341,6 +350,7 @@ function TurnPanel({ b }: { b: Battle }) {
           );
         }) : <p className="small muted">No moves equipped.</p>}
       </div>
+      {noPunch ? <div className="row" style={{ marginTop: 8 }}><button className="btn" onClick={doStruggle}>Struggle (1d8)</button><span className="small muted">No damaging move has PP left.</span></div> : null}
       {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || abil || (!isPc && dm) ? <>
         <div className="small muted" style={{ margin: '12px 0 6px', fontWeight: 600 }}>Or do something else</div>
         <div className="row">

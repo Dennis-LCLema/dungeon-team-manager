@@ -484,6 +484,9 @@ export function triggerAbility(actor: Fighter, target: Fighter | null) {
   bt.last = res;
 }
 
+/** The move of last resort, as in the games: for a fighter with no damaging move that has PP left. */
+export const struggle = () => customMove('struggle', 'typeless', 'physical', '1d8', null, 'Used when no other move can hit.');
+
 /** Enemy or NPC picks a target and a move on its own: usually the best type match, sometimes random. */
 export function autoTurn() {
   const b = BT();
@@ -502,14 +505,13 @@ export function autoTurn() {
   // Rivals otherwise pick the target they hit hardest, then the weakest; everyone else picks at random.
   const plan = () => targets.slice().sort((p, q) => punch(q) - punch(p) || p.hpCur / hpMaxOf(p) - q.hpCur / hpMaxOf(q))[0];
   const t = focus || (smart ? plan() : targets[roll(targets.length) - 1]);
-  const STRUGGLE = () => customMove('struggle', 'typeless', 'physical', '1d8', null, 'Used when no other move can hit.');
   const usable = actor.moves.filter(m => m.dice && (m.ppMax == null || m.ppCur > 0));
   // Out of damaging moves (no PP left): Struggle, as in the games, so a fight can't stall forever.
-  const pool = usable.length ? usable : [STRUGGLE()];
+  const pool = usable.length ? usable : [struggle()];
   const best = pool.slice().sort((p, q) => effectiveness(q.type, t) - effectiveness(p.type, t))[0];
   let mv = smart || roll(3) < 3 ? best : pool[roll(pool.length) - 1];
   // Nothing it knows can touch this target: Struggle too.
-  if (pool.every(m => effectiveness(m.type, t) === 0)) mv = STRUGGLE();
+  if (pool.every(m => effectiveness(m.type, t) === 0)) mv = struggle();
   resolveMove(actor, mv, t);
   checkEnd();
   nextTurn();

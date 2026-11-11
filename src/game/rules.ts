@@ -319,6 +319,7 @@ export function processLevelUps() {
 export function longRest(c: Char) {
   c.hpCur = maxHP(c);
   c.moves.forEach(m => { if (m.ppMax != null) m.ppCur = m.ppMax; });
+  delete c.ppSpent;
   c.assists.forEach(a => { a.used = false; });
   c.sashUsed = false;
   c.status = null;
@@ -326,6 +327,23 @@ export function longRest(c: Char) {
     c.friend = (c.friend || 0) + 1;
     if (c.friend === 3 && (c.evo.targets || []).some(t => /friendship/i.test(t.how))) addLog(`${nameOf(c)} trusts the team completely. It can evolve by friendship now!`);
   }
+}
+/** Learn a move. One that was forgotten since the last long rest comes back with the PP it had, not a full refill. */
+export function learnMove(c: Char, mv: Move) {
+  if (c.moves.some(m => m.name === mv.name)) return false;
+  const spent = c.ppSpent?.[mv.name];
+  if (spent && mv.ppMax != null) mv.ppCur = Math.max(0, mv.ppMax - spent);
+  c.moves.push(mv);
+  if (!c.inDungeon && c.equipped.length < 4) c.equipped.push(mv.name);
+  return true;
+}
+export function forgetMove(c: Char, name: string) {
+  const i = c.moves.findIndex(m => m.name === name);
+  if (i < 0) return;
+  const m = c.moves[i];
+  if (m.ppMax != null && m.ppCur < m.ppMax) (c.ppSpent ||= {})[name] = m.ppMax - m.ppCur;
+  c.moves.splice(i, 1);
+  c.equipped = c.equipped.filter(n => n !== name);
 }
 export const shortRestHeal = (c: Char) => Math.max(1, Math.floor(hitDie(c) / 2) + 1 + M(c, 'def'));
 
@@ -345,7 +363,7 @@ export function rollMoveOutside(c: Char, mv: Move) {
     text = `${who} used ${T(mv.name)}: ${d20 + bonus} to hit (rolled ${d20}${fmt(bonus)})${crit ? ', critical hit' : ''}, ${dmg} ${mv.type} damage.`;
   }
   if (mv.ppMax != null) text += ` ${mv.ppCur}/${mv.ppMax} PP left.`;
-  addLog(text);
+  addLog(text, 'battle');
   toast(text);
 }
 
@@ -404,7 +422,7 @@ export function tryReviver(t: Fighter) {
   t.hpCur = maxHP(t);
   const msg = `${nameOf(t)} fainted, but its Reviver Seed brought it back to full HP!`;
   if (BT()) blog(msg);
-  addLog(msg);
+  addLog(msg, 'item');
   return true;
 }
 const ppMissing = (c: Char) => equippedOf(c).reduce((s, m) => s + (m.ppMax != null ? m.ppMax - m.ppCur : 0), 0);
@@ -687,6 +705,8 @@ export function cleanChar(raw: unknown): Char | null {
   } as Char;
   if (!c.types.length) c.types = ['normal'];
   if (!isObj(c.tree)) c.tree = defaultTree(c);
+  // A damaged file can hold PP that is missing or out of range: put it back between 0 and the move's maximum.
+  c.moves.forEach(m => { if (m.ppMax != null) m.ppCur = Math.max(0, Math.min(m.ppMax, typeof m.ppCur === 'number' && Number.isFinite(m.ppCur) ? Math.round(m.ppCur) : m.ppMax)); });
   c.equipped = c.equipped.filter(n => c.moves.some(m => m.name === n)).slice(0, 4);
   c.hpCur = Math.max(0, Math.min(maxHP(c), Number(raw.hpCur) >= 0 ? Number(raw.hpCur) : maxHP(c)));
   return c;

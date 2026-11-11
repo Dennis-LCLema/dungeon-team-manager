@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { lsGet, lsSet, stable, uid } from '../lib/util';
 
 enablePatches();
-import type { AttackResult, Char, GameEvent, Shared, User } from './types';
+import type { AttackResult, Char, GameEvent, LogEntry, Shared, User } from './types';
 
 export const LS_KEY = 'pmd-team-v3';
 const ME_KEY = 'pmd-me';
@@ -136,10 +136,21 @@ export function replaceFromRemote(next: Shared) {
 export const setLocalChangeHandler = (fn: () => void) => { onLocalChange = fn; };
 
 /** Log line for the shared adventure log. Call inside update(). */
-export function addLog(text: string) {
+const LOG_ITEM = /bought|sold \d|\bgave \d* ?(?!\d* ?XP).+ to |went into (team storage|the team bank)|Loot found|dropped nothing|stored 1|from storage|in the bag|is now holding|equipped|took off its|team bank|Reviver Seed/;
+const LOG_BATTLE = /battle|fainted|^XP:|purified|Mega Evolved|\bspar\b|Summon Trap|sneaked past|defeated the boss|Creative moment|to hit|Save DC/i;
+/** Which of the three logs an entry belongs in: the adventure (story), battles, or items. */
+export const logKind = (e: Pick<LogEntry, 'text' | 'kind'>): NonNullable<LogEntry['kind']> =>
+  e.kind || (LOG_ITEM.test(e.text) ? 'item' : LOG_BATTLE.test(e.text) ? 'battle' : 'story');
+export const LOG_KEEP = 80;
+/** Keep the newest LOG_KEEP entries of each kind, so a long battle can't push the story out. `entries` are newest first. */
+export function trimLog(entries: LogEntry[]) {
+  const n: Record<string, number> = {};
+  return entries.filter(e => { const k = logKind(e); n[k] = (n[k] || 0) + 1; return n[k] <= LOG_KEEP; });
+}
+export function addLog(text: string, kind?: LogEntry['kind']) {
   const s = G();
-  s.log.entries.unshift({ id: uid(), t: Date.now(), who: me()?.name || '', text });
-  if (s.log.entries.length > 80) s.log.entries.length = 80;
+  s.log.entries.unshift({ id: uid(), t: Date.now(), who: me()?.name || '', text, ...(kind ? { kind } : {}) });
+  if (s.log.entries.length > LOG_KEEP) s.log.entries = trimLog(s.log.entries);
 }
 
 /** Tell every device about a level-up, an evolution or a Mega Evolution. Call inside update(). */

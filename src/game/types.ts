@@ -43,6 +43,8 @@ export interface Char extends Mon {
   persona?: { nature: string; demeanor: string; ok?: boolean };
   /** Earned by staying in character: advantage on the next attack. */
   inspired?: boolean;
+  /** PP already spent on moves that were forgotten, so forgetting and relearning a move can't refill it. Cleared by a long rest. */
+  ppSpent?: Record<string, number>;
   /** Moves the player hopes to learn (slugs), for the DM to see. */
   wish?: string[];
   /** Chosen preset ability (slug). Defaults to the first in `abilities`. */
@@ -126,9 +128,14 @@ export interface Quest { id: string; title: string; giver: string; xp: number; p
 export interface World {
   layer: number; at: string; unlocked: number[]; deepest: number; votes: Record<string, string>;
   shop: Record<string, { stock: LootLine[]; off?: number }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean; sparDone?: boolean;
+  /** Characters the DM added, what happened when the team met each character (players can read it), and when they met. */
+  people?: Person[]; notes?: Record<string, string>; metAt?: Record<string, number>;
 }
 export interface User { name: string; role: 'dm' | 'player'; hash?: string }
-export interface LogEntry { id: string; t: number; who: string; text: string }
+/** `kind` picks the log an entry shows in. Without one, the text decides (see logKind in store.ts). */
+export interface LogEntry { id: string; t: number; who: string; text: string; kind?: 'story' | 'battle' | 'item' }
+/** A character the DM added in the app. Same shape as the built-in story cast. */
+export interface Person { id: string; name: string; species: string; role: string; desc: string; secret?: string; layer?: number; types?: string[] }
 
 export interface Shared {
   chars: Char[];

@@ -280,7 +280,7 @@ export const TEAMS = {
 };
 
 /** Story cast. `layer` unset = roams every layer. `secret` is shown to the DM only. */
-export interface CastMember { id: string; layer?: number; team?: keyof typeof TEAMS; keeper?: boolean; rivalOf?: string; name: string; species: string; role: string; desc: string; secret?: string; level?: number }
+export interface CastMember { types?: string[]; id: string; layer?: number; team?: keyof typeof TEAMS; keeper?: boolean; rivalOf?: string; name: string; species: string; role: string; desc: string; secret?: string; level?: number }
 export const CAST: CastMember[] = [
   { id: 'zoroark', name: 'The Trickster', species: 'Zoroark', level: 15, role: 'Villain · roams every layer',
     desc: 'A sly, grinning shape that always seems to be one step ahead of the team.',

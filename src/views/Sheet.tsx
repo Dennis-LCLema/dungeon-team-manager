@@ -6,7 +6,7 @@ import {
   AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, diceFor, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
-  slotOf, weaponHit, abilityFxText, lockScores, natureText, quizResult, rollScores,
+  slotOf, weaponHit, abilityFxText, forgetMove, learnMove, lockScores, natureText, quizResult, rollScores,
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
@@ -234,7 +234,7 @@ function AbilityChecks({ c }: { c: Char }) {
   const check = (k: StatKey | 'heart', label: string) => {
     const d = roll(20), m = M(c, k), total = d + m;
     const msg = `${nameOf(c)} rolled a ${label} check: ${d}${fmt(m)} = ${total}${d === 20 ? ' (natural 20!)' : d === 1 ? ' (natural 1)' : ''}.`;
-    update(() => addLog(msg));
+    update(() => addLog(msg, 'battle'));
     toast(`🎲 ${label} check: ${total}`);
   };
   return (
@@ -255,7 +255,7 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
   const onMove = (fn: (m: Move, x: Char) => void) => withChar(c.id, x => { const m = x.moves.find(y => y.name === name); if (m) fn(m, x); });
   const forget = () => run(async () => {
     if (locked || !(await ask(`Forget ${T(name)}?`, 'Forget'))) return;
-    withChar(c.id, x => { const i = x.moves.findIndex(y => y.name === name); if (i >= 0) x.moves.splice(i, 1); x.equipped = x.equipped.filter(n => n !== name); });
+    withChar(c.id, x => forgetMove(x, name));
   });
   return (
     <div className="move">
@@ -316,17 +316,15 @@ function Moves({ c }: { c: Char }) {
     if (!n.trim()) return toast('Type a move name first.', 'bad');
     if (c.moves.some(m => m.name === slug(n))) return toast('Already known.', 'bad');
     const mv = toTableMove(getMove(n));
-    withChar(c.id, x => {
-      if (!x.moves.some(y => y.name === mv.name)) { x.moves.push(mv); if (!x.inDungeon && x.equipped.length < 4) x.equipped.push(mv.name); }
-      addLog(`${nameOf(x)} learned ${T(mv.name)}.`);
-    });
+    withChar(c.id, x => { if (learnMove(x, mv)) addLog(`${nameOf(x)} learned ${T(mv.name)}.`); });
     toast(`Learned ${T(mv.name)}!`);
     setMvName('');
   });
   const addCustom = () => {
     if (!cm.name.trim()) return toast('Give the move a name.', 'bad');
-    const mv = customMove(cm.name, cm.type, cm.cls, cm.dice || '2d6', cm.pp ? Math.max(1, +cm.pp) : null, cm.desc);
-    withChar(c.id, x => { x.moves.push(mv); if (!x.inDungeon && x.equipped.length < 4) x.equipped.push(mv.name); });
+    const mv = customMove(cm.name, cm.type, cm.cls, cm.dice || '2d6', cm.pp ? Math.max(1, Math.min(10, Math.round(+cm.pp) || 1)) : null, cm.desc);
+    if (c.moves.some(m => m.name === mv.name)) return toast(`${nameOf(c)} already knows a move called ${T(mv.name)}.`, 'bad');
+    withChar(c.id, x => { learnMove(x, mv); });
     setCm({ ...cm, name: '', desc: '' });
   };
   return (
@@ -399,7 +397,7 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
     const r = applyItem(x, i, null, false);
     if (!r) return;
     if (!r.ok) { toast(r.msg, 'bad'); return; }
-    addLog(r.msg); toast(r.msg);
+    addLog(r.msg, 'item'); toast(r.msg);
   });
   /** Put a held item, weapon or armor in its slot; whatever was there goes back in the bag. */
   const hold = (i: number) => withChar(c.id, x => {
@@ -785,6 +783,28 @@ function SpeciesData({ c }: { c: Char }) {
   );
 }
 
+const JUMPS = ['Moves', 'Bag', 'Ability', 'Skill tree', 'Stats', 'Pokédex', 'Mega Evolution', 'Assists', 'Notes'];
+/** One tap opens a section of the sheet and scrolls to it. Stays under the header while the page scrolls. */
+function JumpBar() {
+  // The bar sticks right under the app header, whatever height that is on this screen.
+  useEffect(() => {
+    const h = document.querySelector<HTMLElement>('header.top');
+    if (!h) return;
+    const set = () => document.documentElement.style.setProperty('--hdr', h.offsetHeight + 'px');
+    const ro = new ResizeObserver(set);
+    ro.observe(h);
+    set();
+    return () => ro.disconnect();
+  }, []);
+  const go = (label: string) => {
+    const d = [...document.querySelectorAll<HTMLDetailsElement>('main details.card')].find(x => x.querySelector('summary')?.textContent?.startsWith(label));
+    if (!d) return toast(`This Pokémon has no ${label} section.`, 'bad');
+    d.open = true;
+    d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  return <nav className="jump" aria-label="Jump to a section">{JUMPS.map(l => <button key={l} className="btn sm" onClick={() => go(l)}>{l}</button>)}</nav>;
+}
+
 export default function Sheet() {
   const s = useGame(), c = activeChar();
   const [hpAmt, setHpAmt] = useState('');
@@ -802,6 +822,7 @@ export default function Sheet() {
   return (
     <>
       {edit ? null : <div className="banner">You're looking at {nameOf(c)}. Only {c.player || 'the DM'} and the DM can change this sheet.</div>}
+      <JumpBar />
       {c.inDungeon ? <div className="banner">🔒 Moves are locked for {s.dungeon.name || 'the dungeon'}. You can still use them and track PP.</div> : null}
       <fieldset className="plain" disabled={!edit}>
         <section className="card">

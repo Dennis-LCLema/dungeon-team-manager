@@ -33,6 +33,8 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🌳 **Write your own skill-tree entries**: a player rewrites an entry and picks a bonus (+1 to hit, +4 max HP…); once the DM approves it, the app applies it
 - ⚔️🛡️ **Weapons and armor** in their own slots, alongside a held item
 - 🥊 A one-tap **graduation spar** against the rival team, each rival hunting the player it chose
+- 📖 **Glossary**: everyone the team has met, with their type and the DM's notes on what happened. The DM can add new characters from the app
+- 🗂️ **Three logs**: adventure (meetings and decisions), battle, and items, each in its own fold-out
 - 📜 **Previously on…**: a recap of last session's highlights, shown on everyone's screen
 - 🎲 **Ability checks** (STR, DEX, CON, INT, WIS, CHA) from the sheet, and **status moves that resolve themselves** with a save against the DC
 - ↩ **Undo** for the DM, and **automatic backups** of the whole game on the DM's device (last 3 days)

@@ -4,8 +4,9 @@ import { rollDice } from '../lib/util';
 import { abilityInfo, bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { AC, M, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
-import { G, setUi, update } from './store';
+import { AC, M, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
+import { G, LOG_KEEP, addLog, logKind, setUi, update } from './store';
+import { getMove } from './dex';
 import type { AttackResult, Char, Enemy } from './types';
 
 beforeAll(() => { setDex(JSON.parse(readFileSync('public/dex.json', 'utf8'))); });
@@ -546,5 +547,55 @@ describe('rolled stats and personality', () => {
     expect(attack(heroId, foeId)!.adv).toBe(true);
     expect(G().chars[0].inspired).toBe(false);
     expect(attack(heroId, foeId)!.adv).toBe(false);
+  });
+});
+
+describe('PP', () => {
+  it('every move in the Pokédex gets valid PP and dice', () => {
+    const dex = JSON.parse(readFileSync('public/dex.json', 'utf8'));
+    const names = Object.values(dex.m as Record<string, [string]>).map(m => m[0]);
+    expect(names.length).toBeGreaterThan(500);
+    names.forEach(n => {
+      const mv = toTableMove(getMove(n));
+      expect(mv.ppMax === null || [1, 3, 5, 6].includes(mv.ppMax), `${n} PP ${mv.ppMax}`).toBe(true);
+      expect(mv.ppCur, n).toBe(mv.ppMax);
+      expect(mv.cls === 'status' ? mv.dice === '' : /^\dd\d$/.test(mv.dice), `${n} dice ${mv.dice}`).toBe(true);
+    });
+  });
+
+  it('forgetting and relearning a move does not refill its PP, but a long rest does', () => {
+    const c = createChar('Charmander', '', 'Luis', 5), flame = () => toTableMove(getMove('Surf'));
+    expect(learnMove(c, flame())).toBe(true);
+    expect(learnMove(c, flame())).toBe(false); // already known
+    const mv = c.moves.find(m => m.name === 'surf')!;
+    mv.ppCur = 1;
+    forgetMove(c, 'surf');
+    learnMove(c, flame());
+    expect(c.moves.find(m => m.name === 'surf')!.ppCur).toBe(1);
+    forgetMove(c, 'surf');
+    longRest(c);
+    learnMove(c, flame());
+    const again = c.moves.find(m => m.name === 'surf')!;
+    expect(again.ppCur).toBe(again.ppMax);
+  });
+
+  it('a damaged file gets its PP put back in range', () => {
+    const c = createChar('Charmander', '', 'Luis', 5), raw = JSON.parse(JSON.stringify(c));
+    raw.moves = [{ ...toTableMove(getMove('Flamethrower')), ppCur: 99 }, { ...toTableMove(getMove('Fire Blast')), ppCur: null }, { ...toTableMove(getMove('Slash')), ppCur: -4 }];
+    expect(cleanChar(raw)!.moves.map(m => [m.ppCur, m.ppMax])).toEqual([[5, 5], [1, 1], [0, 6]]);
+  });
+});
+
+describe('the three logs', () => {
+  it('sorts entries into adventure, battle and items, and keeps each kind separately', () => {
+    const kinds = (texts: string[]) => texts.map(text => logKind({ text }));
+    expect(kinds(['The team met Guildmaster Ivy.', 'The team traveled to Bloomrest Glade.', 'Dennis gave 30 XP to the team.', 'Riolu reached level 4.', 'Dennis rolled stats for Aron: 10, 12, 9, 14, 15, 8.'])).toEqual(['story', 'story', 'story', 'story', 'story']);
+    expect(kinds(['The team won a battle!', 'XP: Riolu +40.', 'Wick used Ember: 14 to hit (rolled 12+2), 5 fire damage.', 'Shadow Zubat was purified by Riolu.'])).toEqual(['battle', 'battle', 'battle', 'battle']);
+    expect(kinds(['Luis bought Oran Berry for ₽50. It went to team storage.', 'Loot found: Potion, ₽120.', 'Dennis gave Escape Rope to Riolu.', 'Riolu is now holding Soothe Bell.'])).toEqual(['item', 'item', 'item', 'item']);
+    expect(logKind({ text: 'The team won a battle!', kind: 'story' })).toBe('story');
+    update(s => { s.log.entries = []; addLog('The team met Old Maren.'); for (let i = 0; i < LOG_KEEP + 30; i++) addLog('The team won a battle!'); });
+    const e = G().log.entries;
+    expect(e.filter(x => logKind(x) === 'battle')).toHaveLength(LOG_KEEP);
+    expect(e.some(x => x.text === 'The team met Old Maren.')).toBe(true);
   });
 });

@@ -368,3 +368,8 @@ fieldset[disabled] .filebtn{opacity:.45}
 
 .quiz{display:grid;gap:8px}
 .quiz .btn{text-align:left;white-space:normal;height:auto;padding:10px 12px;line-height:1.35}
+
+/* Sheet quick-jump: stays under the header while the page scrolls */
+.jump{position:sticky;top:calc(var(--hdr,50px) + env(safe-area-inset-top,0px));z-index:15;display:flex;gap:6px;overflow-x:auto;padding:8px 0;margin:0 0 6px;background:var(--bg);scrollbar-width:none}
+.jump .btn{flex:none}
+main details.card{scroll-margin-top:calc(var(--hdr,50px) + 58px)}

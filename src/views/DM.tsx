@@ -209,7 +209,7 @@ export default function DM() {
           </select>
           <button className="btn primary" onClick={giveXp}>Give XP</button>
         </div>
-        <p className="small muted" style={{ marginBottom: 0 }}>For story moments, puzzles and good roleplay. Level ups and evolutions happen on their own.</p>
+        <p className="small muted tip" style={{ marginBottom: 0 }}>For story moments, puzzles and good roleplay. Level ups and evolutions happen on their own.</p>
       </section>
 
       <section className="card"><h2>Give an item or money</h2>
@@ -233,11 +233,11 @@ export default function DM() {
           <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }}><input type="checkbox" checked={dice.post} onChange={e => setDice({ ...dice, post: e.target.checked })} /> Show players</label>
         </div>
         {dice.rolls.length ? <div className="log" style={{ marginTop: 8 }}>{dice.rolls.map((r, i) => <p key={i} className="mono">{r}</p>)}</div>
-          : <p className="small muted" style={{ marginBottom: 0 }}>Rolls stay on your screen unless you tick Show players.</p>}
+          : <p className="small muted tip" style={{ marginBottom: 0 }}>Rolls stay on your screen unless you tick Show players.</p>}
       </section>
 
       <section className="card"><h2>Item catalog</h2>
-        <p className="small muted" style={{ marginTop: 0 }}>{ITEMS.length} Pokémon and D&amp;D-style items, plus TMs for any damaging move. Give sends one to:</p>
+        <p className="small muted tip" style={{ marginTop: 0 }}>{ITEMS.length} Pokémon and D&amp;D-style items, plus TMs for any damaging move. Give sends one to:</p>
         <div className="row" style={{ marginBottom: 8 }}><Recipients label="Catalog gives to" value={catTo} onChange={setCatTo} /></div>
         <Catalog onGive={def => {
           update(d => {

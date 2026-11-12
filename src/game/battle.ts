@@ -210,7 +210,8 @@ export function handleKO(target: Fighter, actor: Fighter | null) {
     if (target.shadow) {
       if (target.heartGauge <= 30) {
         target.outReason = '✨ Purified';
-        const pc = actor && actor.kind !== 'enemy' ? actor : null;
+        // The Assist goes to whoever landed the final blow; if nobody did (a burn, say), to the hero who last reached out.
+        const pc = actor && actor.kind !== 'enemy' ? actor : G().chars.find(c => c.id === target.purifier) || null;
         const mv = target.moves.find(m => m.type !== 'shadow' && m.dice) || target.moves[0];
         if (pc) pc.assists.push({ name: T(target.species), move: T(mv.name), note: 'Purified in battle', used: true });
         blog(`${target.name}'s heart opens! It is purified${pc ? ' and becomes an Assist for ' + nameOf(pc) : ''}.`);
@@ -349,6 +350,7 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   blog(`${who} used ${T(mv.name)} on ${tn}: ${d20}${fmt(bonus)} = ${total} vs ${def}${adv ? ' (advantage)' : dis ? ' (disadvantage)' : ''}${fld.names.length ? ' [' + fld.names.join(', ') + ']' : ''}${tag}.${crit ? ' Critical hit!' : ''} ${dmg} damage.${effTxt}${extra}`);
   Object.assign(res, { hit: true, dmg, eff, extra: extra.trim() });
   knockout(target, actor);
+  if (target.kind === 'enemy' && target.outReason === '✨ Purified') res.extra = `${res.extra || ''} ✨ ${tn} was purified${actor.kind !== 'enemy' ? ` and joins ${who} as an Assist` : ''}!`.trim();
   if (actor.hpCur <= 0) knockout(actor, null);
   res.ko = target.hpCur <= 0 || (target.kind === 'enemy' && !!target.outReason);
   res.hpLeft = target.hpCur;

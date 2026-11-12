@@ -502,7 +502,7 @@ export function rollRarity(tier: number, bump?: number) {
   const key = r <= t[0] ? 'c' : r <= t[1] ? 'u' : r <= t[2] ? 'r' : r <= t[3] ? 'v' : 'l';
   return { r: key, roll: d, total: r };
 }
-function randomTM(tier: number) {
+export function randomTM(tier: number) {
   if (!dexReady()) return null;
   const cap = [0, 70, 90, 110, 150][tier], M0 = dex().m;
   const ids = Object.keys(M0).filter(id => { const m = M0[id]; return m[2] !== 'status' && m[3] >= 40 && m[3] <= cap; });
@@ -641,8 +641,7 @@ export function applyItem(user: Char, idx: number, target0: Fighter | null, inBa
     const mv = toTableMove(getMove(fx.tm));
     if (user.moves.some(m => m.name === mv.name)) return { ok: false, msg: `${nameOf(user)} already knows ${T(mv.name)}.` };
     take();
-    user.moves.push(mv);
-    if (!user.inDungeon && user.equipped.length < 4) user.equipped.push(mv.name);
+    learnMove(user, mv);
     return { ok: true, msg: `${nameOf(user)} learned ${T(mv.name)} from the TM!` };
   }
   if (fx.levelUp) {

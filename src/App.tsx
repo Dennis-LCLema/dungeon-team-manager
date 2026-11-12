@@ -8,7 +8,7 @@ import { loadSpriteIds } from './game/pokeapi';
 import { migrateChars, nameOf, needsMigration } from './game/rules';
 import { G, activeChar, canUndo, charById, getUi, isDM, me, owns, remote, saveBackup, setUi, toast, undo, update, useGame, useUi } from './game/store';
 import { initSync } from './game/sync';
-import { lsSet } from './lib/util';
+import { lsGet, lsSet } from './lib/util';
 import { sfx } from './lib/sfx';
 import Account from './views/Account';
 import BattleView from './views/Battle';
@@ -22,6 +22,12 @@ import Sheet from './views/Sheet';
 import Storage from './views/Storage';
 import WorldView from './views/World';
 
+/** Help text is hidden until someone asks for it, so screens stay short. Remembered on this device. */
+function toggleTips() {
+  const on = document.body.classList.toggle('tips');
+  lsSet('pmd-tips', on);
+  toast(on ? 'Tips are on: help text shows on every screen.' : 'Tips are off.');
+}
 function toggleTheme() {
   const r = document.documentElement;
   const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -170,6 +176,7 @@ export default function App() {
     // Sprites are 1 MB+: show the app first and let them pop in when they arrive.
     void loadSpriteIds().then(() => setUi({}));
     void initSync();
+    document.body.classList.toggle('tips', lsGet('pmd-tips', false));
   }, []);
 
   return (
@@ -185,6 +192,7 @@ export default function App() {
           {who ? (
             <button className="btn sm ghost" onClick={() => setUi({ tab: 'account' })}>{who.name}{who.role === 'dm' ? ' · DM' : ''}</button>
           ) : null}
+          <button className="btn sm ghost" onClick={toggleTips} aria-label="Show or hide help text" title="Show or hide help text">?</button>
           <button className="btn sm ghost" onClick={toggleTheme} aria-label="Switch light or dark theme">
             <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" /></svg>
           </button>

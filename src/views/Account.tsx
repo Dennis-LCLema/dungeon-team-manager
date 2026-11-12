@@ -48,7 +48,9 @@ const HOUSE_RULES = [
   'Mega Evolution: at level 10 a final-form Pokémon with a Mega can propose its own Mega Trial. When the DM marks it passed, it can Mega Evolve once per battle.',
   'Each Pokémon can hold one item. Shops buy items at half value. For D&D prices, 1 gp = ₽ 100.',
   'Defeated enemies roll d100 for loot. The DM tools tab explains the tables.',
-  'Shadow moves deal 1.5× damage to all non-Shadow Pokémon. Defeat a Shadow with its Heart Gauge at 30 or lower to purify it.',
+  'Shadow moves deal 1.5× damage to all non-Shadow Pokémon. To purify a Shadow: use Purify on your turn (a Heart check, 12 or higher) until its Heart Gauge is 30 or lower, then knock it out. It joins whoever lands the final blow as an Assist, usable once per long rest. Knocked out with its heart still closed, it flees.',
+  'TMs teach a move to any Pokémon that uses one from its bag. They turn up as loot, at a TM seller the DM opens, or as a gift from the DM (type TM and the move name).',
+  'The DM can open any kind of shop anywhere (World tab), set any discount on a shop, add an item the players ask for, and choose what the team finds in a wild area instead of rolling.',
   'Every attack in battle shows a pop-up on everyone\'s screen with the roll, hit or miss, and the damage.',
 ];
 
@@ -128,7 +130,7 @@ export default function Account() {
               <input placeholder="New player's name" style={{ flex: 1 }} value={newUser} onChange={e => setNewUser(e.target.value)} />
               <button className="btn" onClick={addUser}>Add player</button>
             </div>
-            <p className="small muted">A reset or new player's password is their name in lowercase until they change it.</p>
+            <p className="small muted tip">A reset or new player's password is their name in lowercase until they change it.</p>
           </section>
           <section className="card">
             <h2>Backup</h2>
@@ -137,7 +139,7 @@ export default function Account() {
               <button className="btn primary" onClick={() => run(() => exportFile(`dungeon-team-backup-${new Date().toISOString().slice(0, 10)}.json`, { kind: 'pmd-team', version: 3, state: { ...s, game: { battle: null, bsetup: s.game.bsetup } } }))}>Export whole game</button>
             </div>
             <h3>Automatic backups</h3>
-            <p className="small muted" style={{ marginTop: 0 }}>Your device saves the whole game every 10 minutes while you have it open, one copy per day for the last 3 days.</p>
+            <p className="small muted tip" style={{ marginTop: 0 }}>Your device saves the whole game every 10 minutes while you have it open, one copy per day for the last 3 days.</p>
             {autoBackups().length ? autoBackups().map(b => (
               <div className="list-item small" key={b.day}>
                 <span className="grow"><b>{new Date(b.t).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b> <span className="muted">· {b.state.chars.length} Pokémon · {LAYERS[b.state.world.layer]?.n || ''}</span></span>
@@ -161,7 +163,7 @@ export default function Account() {
             <div className="row" style={{ marginTop: 8 }}>
               <button className="btn" onClick={() => (paste.trim() ? run(() => importJSON(paste)) : toast('Paste a character or backup first.', 'bad'))}>Import pasted text</button>
             </div>
-            <p className="small muted">A whole-game backup replaces the team, world, quests, log and logins. A single Pokémon is added to the team.</p>
+            <p className="small muted tip">A whole-game backup replaces the team, world, quests, log and logins. A single Pokémon is added to the team.</p>
           </section>
           <section className="card">
             <h2>House rules used by this app</h2>

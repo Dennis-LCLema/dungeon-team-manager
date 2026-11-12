@@ -202,7 +202,7 @@ function AbilityCard({ c }: { c: Char }) {
         <p className="small" style={{ margin: '0 0 6px' }}><b>Waiting for Dennis:</b> {hb.name}: {hb.desc} <span className="muted">{abilityFxText(hb.fx)}</span></p>
         {dm ? <HomebrewDmButtons c={c} /> : null}
       </> : on ? (dm ? <HomebrewDmButtons c={c} /> : null) : <>
-        <p className="small muted" style={{ marginTop: 0 }}>Invent your own ability. Pick what it does in battle and the app resolves it when you tap it on your turn (once per battle). Once Dennis approves it, it replaces the preset one.</p>
+        <p className="small muted tip" style={{ marginTop: 0 }}>Invent your own ability. Pick what it does in battle and the app resolves it when you tap it on your turn (once per battle). Once Dennis approves it, it replaces the preset one.</p>
         <div className="grid2 stack">
           <label>Name<input value={name} disabled={!edit} onChange={e => setName(e.target.value)} placeholder="e.g. Wax Shield" /></label>
           <label>What it does<input value={desc} disabled={!edit} onChange={e => setDesc(e.target.value)} placeholder="e.g. Once per battle, halve the damage of one hit." /></label>
@@ -330,7 +330,7 @@ function Moves({ c }: { c: Char }) {
   return (
     <details className="card" open>
       <summary>Moves ({eq.length}/4 equipped)</summary>
-      <p className="small muted" style={{ marginTop: 0 }}>Tap Use to roll a move outside battle. It spends PP and posts the roll to the team Log.</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Tap Use to roll a move outside battle. It spends PP and posts the roll to the team Log.</p>
       {eq.map(m => <MoveCard key={m.name} c={c} mv={m} slot />)}
       {Array.from({ length: Math.max(0, 4 - eq.length) }, (_, i) => <div key={i} className="move empty small">Empty slot</div>)}
       <h3>Move pool</h3>
@@ -341,7 +341,7 @@ function Moves({ c }: { c: Char }) {
       {all.length ? (
         <details style={{ marginTop: 12 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Every move {T(c.species)} learns ({all.length})</summary>
-          <p className="small muted" style={{ margin: '6px 0' }}>Tap ☆ to put a move on the wishlist.</p>
+          <p className="small muted tip" style={{ margin: '6px 0' }}>Tap ☆ to put a move on the wishlist.</p>
           {all.map(m => {
             const has = c.moves.some(x => x.name === m.name), ok = m.level <= gameLvl(c.level);
             return (
@@ -612,7 +612,7 @@ function PersonaCard({ c }: { c: Char }) {
           <select value={pick.nature} onChange={e => setPick({ ...pick, nature: e.target.value })}>{Object.keys(NATURES).map(n => <option key={n} value={n}>{natureText(n)}</option>)}</select>
         </label>
       </div>
-      <p className="small muted" style={{ margin: '6px 0' }}>The quiz picked these. Change them if they don't feel right. Dennis approves the result.</p>
+      <p className="small muted tip" style={{ margin: '6px 0' }}>The quiz picked these. Change them if they don't feel right. Dennis approves the result.</p>
       <h3>Backstory (optional, saved to your Notes)</h3>
       {STORY_Q.map((sq, i) => <label key={i} style={{ marginBottom: 6 }}>{sq}<input value={story[i]} maxLength={200} onChange={e => setStory(story.map((v, j) => (j === i ? e.target.value : v)))} /></label>)}
       <div className="row" style={{ marginTop: 8 }}>
@@ -726,7 +726,7 @@ function Assists({ c }: { c: Char }) {
   return (
     <details className="card">
       <summary>Assists (purified friends)</summary>
-      <p className="small muted" style={{ marginTop: 0 }}>Purified Shadow Pokémon can be called in once per long rest for one move.</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Purified Shadow Pokémon can be called in once per long rest for one move.</p>
       {c.assists.length ? c.assists.map((x, i) => (
         <div className="list-item" key={i}>
           <div className="grow"><b>{x.name}</b> <span className="small muted">{x.move}</span>{x.note ? <div className="small muted">{x.note}</div> : null}</div>
@@ -778,7 +778,7 @@ function SpeciesData({ c }: { c: Char }) {
         <input list="speciesList" placeholder="species to evolve or change into" style={{ flex: 1 }} value={newForm} onChange={e => setNewForm(e.target.value)} />
         <button className="btn" onClick={() => { if (!newForm.trim()) return toast('Type a species first.', 'bad'); withChar(c.id, x => evolve(x, newForm)); setNewForm(''); }}>Evolve into</button>
       </div>
-      <p className="small muted">Use this for item, friendship or story evolutions, or regional forms.</p>
+      <p className="small muted tip">Use this for item, friendship or story evolutions, or regional forms.</p>
     </details>
   );
 }
@@ -936,7 +936,7 @@ export default function Sheet() {
               </div>
             </div>
           </fieldset>
-          <p className="small muted" style={{ margin: '8px 0 0' }}>{c.scores ? 'Scores were rolled and locked in.' : "Scores come from the Pokémon's base stats until its rolled stats are locked in."}{c.persona?.ok ? ' The modifiers include its nature.' : ''}{dm ? ' The box under each is a bonus for feats or items.' : ''} Heart is used to purify Shadow Pokémon.</p>
+          <p className="small muted tip" style={{ margin: '8px 0 0' }}>{c.scores ? 'Scores were rolled and locked in.' : "Scores come from the Pokémon's base stats until its rolled stats are locked in."}{c.persona?.ok ? ' The modifiers include its nature.' : ''}{dm ? ' The box under each is a bonus for feats or items.' : ''} Heart is used to purify Shadow Pokémon.</p>
         </details>
 
         <Assists c={c} />

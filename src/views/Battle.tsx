@@ -38,7 +38,7 @@ function RivalBattle() {
   return (
     <section className="card callout">
       <h2>⚔️ Rival battle</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Team Razorwind fights at your players' levels, as strong as the Pokémon they chose, and they plan their moves. {s.world.sparDone ? '' : 'Start with the graduation spar.'}</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Team Razorwind fights at your players' levels, as strong as the Pokémon they chose, and they plan their moves. {s.world.sparDone ? '' : 'Start with the graduation spar.'}</p>
       {!s.world.sparDone ? <button className="btn primary" onClick={() => go(true)}>Start the graduation spar</button> : <>
         <div className="row" style={{ gap: 6, marginBottom: 8 }}>
           {rivals.map(r => (
@@ -110,7 +110,7 @@ function Setup() {
         </select>
       </section>
       <button className="btn primary" style={{ width: '100%', padding: 12 }} onClick={start}>Roll initiative &amp; start</button>
-      <p className="small muted" style={{ textAlign: 'center' }}>You move enemies and NPCs. Each player acts on their own Pokémon's turn from their device.</p>
+      <p className="small muted tip" style={{ textAlign: 'center' }}>You move enemies and NPCs. Each player acts on their own Pokémon's turn from their device.</p>
     </>
   );
 }
@@ -257,6 +257,7 @@ function TurnPanel({ b }: { b: Battle }) {
     const t = target(G()) as Enemy | null;
     if (!t || t.kind !== 'enemy' || !t.shadow) { toast('Target a Shadow Pokémon to purify.', 'bad'); return; }
     const boost = bb.boost?.[a.id] || 0;
+    t.purifier = a.id;
     if (boost) delete bb.boost[a.id];
     const r = boost ? Math.max(roll(20), roll(20)) : roll(20), bonus = prof(a.level) + M(a, 'heart'), tot = r + bonus;
     if (tot >= 12) {
@@ -331,7 +332,7 @@ function TurnPanel({ b }: { b: Battle }) {
               {d20}{fmt(ownCheck.bonus)} = <b>{ownCheck.total}</b> vs {ownCheck.defName} {ownCheck.def}: <b>{ownCheck.hit ? (ownCheck.crit ? 'Critical hit!' : 'Hit!') : 'Miss.'}</b>
               {ownCheck.hit ? ' The app adds their usual damage bonuses and type effectiveness.' : ''}
             </p>
-          ) : <p className="small muted" style={{ margin: '8px 0' }}>The app adds their attack bonus and checks it against the target.</p>}
+          ) : <p className="small muted tip" style={{ margin: '8px 0' }}>The app adds their attack bonus and checks it against the target.</p>}
           <div className="row">
             <button className="btn primary" onClick={applyOwn} disabled={!ownCheck}>{ownCheck && !ownCheck.hit ? 'Confirm miss' : 'Apply'}</button>
             <button className="btn ghost" onClick={dropAsk}>Pick another move</button>
@@ -406,7 +407,7 @@ function FieldCard({ b }: { b: Battle }) {
           <span className="grow"><b>{e.name}</b> <span className="small muted">{fxText(e)} · {e.rounds} round{e.rounds > 1 ? 's' : ''} left</span>{e.note ? <div className="small">{e.note}</div> : null}</span>
           {dm ? <button className="btn sm ghost" aria-label={`End ${e.name}`} onClick={() => update(d => { const bb = d.game.battle; if (bb?.fx) bb.fx = bb.fx.filter(x => x.id !== e.id); })}>✕</button> : null}
         </div>
-      )) : <p className="small muted" style={{ margin: '4px 0 0' }}>A player did something clever, like Fire on Water for a steam fog? Turn it into a field effect.</p>}
+      )) : <p className="small muted tip" style={{ margin: '4px 0 0' }}>A player did something clever, like Fire on Water for a steam fog? Turn it into a field effect.</p>}
       {dm ? <details style={{ marginTop: 8 }}>
         <summary className="small" style={{ cursor: 'pointer', fontWeight: 700 }}>Add a creative moment</summary>
         <div className="row" role="group" aria-label="Who it helps" style={{ margin: '8px 0', gap: 6 }}>
@@ -466,6 +467,12 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
       {e?.shadow && !e.outReason ? (
         <div className="row small" style={{ marginTop: 6, flexWrap: 'nowrap' }}>
           <span className="muted" style={{ minWidth: 70 }}>Heart {e.heartGauge}</span><div style={{ flex: 1 }} className="bar heart"><i style={{ width: e.heartGauge + '%' }} /></div>
+        </div>
+      ) : null}
+      {e?.shadow && !e.outReason ? (
+        <div className="small" style={{ marginTop: 4 }}>
+          {e.heartGauge <= 30 ? <><b>💜 Heart is open.</b> Knock it out now to purify it. It joins whoever lands the final blow as an Assist.</>
+            : <><b>💜 To purify:</b> use Purify on your turn until Heart is 30 or less, then knock it out. Knocked out sooner, it flees.</>}
         </div>
       ) : null}
       {status ? <div className="small" style={{ marginTop: 4, fontWeight: 700 }}>{status}</div> : null}

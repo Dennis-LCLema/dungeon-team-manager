@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const ART = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
 // Shiny sprites to bundle too (each adds ~1 KB). Add species here when a player gets a shiny.
-const SHINY = ['aron', 'lairon', 'aggron'];
+const SHINY = ['aron', 'lairon', 'aggron', 'aggron-mega'];
 const slug = s => String(s).trim().toLowerCase().replace(/♀/g, '-f').replace(/♂/g, '-m').replace(/[.'’:]/g, '').replace(/\s+/g, '-');
 // Same matching as resolveId in src/game/pokeapi.ts.
 function resolveId(map, name) {

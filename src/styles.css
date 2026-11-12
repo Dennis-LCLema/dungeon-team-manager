@@ -373,3 +373,6 @@ fieldset[disabled] .filebtn{opacity:.45}
 .jump{position:sticky;top:calc(var(--hdr,50px) + env(safe-area-inset-top,0px));z-index:15;display:flex;gap:6px;overflow-x:auto;padding:8px 0;margin:0 0 6px;background:var(--bg);scrollbar-width:none}
 .jump .btn{flex:none}
 main details.card{scroll-margin-top:calc(var(--hdr,50px) + 58px)}
+
+/* Help text: hidden until the ? button in the header turns Tips on */
+body:not(.tips) .tip{display:none}

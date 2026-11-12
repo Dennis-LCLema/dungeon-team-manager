@@ -55,6 +55,8 @@ export interface Char extends Mon {
 export interface Enemy extends Mon {
   kind: 'enemy'; side: 'enemy' | 'npc'; name: string; shadow: boolean; heartGauge: number; hpMax: number;
   boss?: boolean; gatekeeper?: boolean; rift?: boolean; minion?: boolean; outReason?: string; killer?: string; overworld?: boolean;
+  /** The hero who last reached out to this Shadow Pokémon. It becomes their Assist if nobody lands the final blow (a burn, say). */
+  purifier?: string;
   /** Id of the team member this foe goes after first (a rival). */
   focus?: string;
   /** A Team Razorwind rival: hero-grade HP and smart move choices. */
@@ -106,6 +108,8 @@ export interface GameEvent {
 export interface LootLine {
   id: string; kind: 'item' | 'money'; itemId?: string; tm?: string; name?: string; r?: string; desc?: string; qty?: number;
   money?: number; src: string; roll: string; to: string; why: string; price?: number; sold?: boolean; special?: boolean;
+  /** Shop price before any discount, so a discount can be changed without stacking. */
+  base?: number;
 }
 export interface TrapResult { n: string; r: number; m: number; tot: number; ok: boolean; dmg: number }
 export interface CellEv { enemies?: Enemy[]; trap?: number; stock?: LootLine[]; flavor?: string; results?: TrapResult[]; ambush?: boolean }
@@ -127,7 +131,8 @@ export interface Announce { id: string; title: string; sub: string; tone: string
 export interface Quest { id: string; title: string; giver: string; xp: number; poke: number; item?: string; qty?: number; done?: boolean }
 export interface World {
   layer: number; at: string; unlocked: number[]; deepest: number; votes: Record<string, string>;
-  shop: Record<string, { stock: LootLine[]; off?: number }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean; sparDone?: boolean;
+  /** Shops by place id. `dm` is the one the DM opens anywhere, when the players go looking for a shop or a merchant. */
+  shop: Record<string, { stock: LootLine[]; off?: number; name?: string }>; area: Record<string, AreaEv>; rifts: Record<string, string>; announce: Announce | null; met: Record<string, boolean>; bond: Record<string, number>; quests: Quest[]; graduated?: boolean; sparDone?: boolean;
   /** Characters the DM added, what happened when the team met each character (players can read it), and when they met. */
   people?: Person[]; notes?: Record<string, string>; metAt?: Record<string, number>;
 }

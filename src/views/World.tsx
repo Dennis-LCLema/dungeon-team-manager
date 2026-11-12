@@ -4,8 +4,8 @@ import { mapDecor } from '../components/mapDecor';
 import { SellList, ShopList, buy } from '../components/Shop';
 import { CAST, ITEM_BY_ID, KIND, STARTER_QUESTS, TEAMS, TYPES, type CastMember, LAB_FLOORS, LAYERS, TCOL, labLvl, layerLvl, ringOf } from '../game/data';
 import { rollSurprise, startBattle, startRivalSpar } from '../game/battle';
-import { arriveLayer, exploreWild, layerClosed, layerNodes, nodeById, prepRun, rollHavenShop, type WorldNode } from '../game/explore';
-import { addItemTo, addLoot, defByName, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
+import { SHOP_KINDS, arriveLayer, exploreWild, layerClosed, layerNodes, nodeById, prepRun, rollHavenShop, rollDmShop, setShopOff, type WorldNode } from '../game/explore';
+import { addItemTo, addLoot, defByName, lootLine, bondOf, haggleOff, healPrice, longRest, lootTeam, processLevelUps, rollChest } from '../game/rules';
 import { G, addLog, ask, isDM, me, owns, setUi, toast, update, useGame } from '../game/store';
 import type { Enemy, Fighter, World } from '../game/types';
 import { getPokemonAny } from '../game/dex';
@@ -69,8 +69,8 @@ function Haggle({ id, k }: { id: string; k: number }) {
   const go = () => update(d => {
     const sh = d.world.shop[id];
     if (!sh || sh.off != null || !roll) return;
-    const off = sh.off = haggleOff(total);
-    sh.stock.forEach(l => { if (!l.sold) l.price = Math.max(1, Math.round((l.price || 0) * (100 - off) / 100)); });
+    const off = haggleOff(total);
+    setShopOff(sh, off);
     addLog(off ? `The team haggled with ${keeper?.name || 'the shopkeeper'} (Charisma ${total}): ${off}% off this visit.` : `${keeper?.name || 'The shopkeeper'} would not budge on prices (Charisma ${total}).`);
   });
   return (
@@ -80,6 +80,68 @@ function Haggle({ id, k }: { id: string; k: number }) {
       <button className="btn sm" disabled={!roll} onClick={go}>Haggle{roll ? ` (${total}: ${haggleOff(total)}% off)` : ''}</button>
       <span className="small muted">10+ = 10%, 15+ = 20%, 20+ = 30%. One try per visit.</span>
     </div>
+  );
+}
+
+/** DM controls for an open shop: any discount (a favour, a bargain, good roleplay), and any item the players ask for. */
+function ShopDm({ id }: { id: string }) {
+  const sh = useGame().world.shop[id];
+  const [off, setOff] = useState('');
+  const [item, setItem] = useState('');
+  const [price, setPrice] = useState('');
+  if (!sh) return null;
+  const add = () => run(() => {
+    const def = defByName(item);
+    if (!def) return toast(`There's no item called "${item}". Pick one from the list, or type TM and a move name.`, 'bad');
+    update(d => {
+      const s2 = d.world.shop[id];
+      if (!s2) return;
+      const base = Math.max(0, Math.round(price === '' ? def.v || 100 : +price) || 0);
+      s2.stock.unshift(Object.assign(lootLine(def, 'Shop', ''), { price: base, sold: false }));
+      if (s2.off) setShopOff(s2, s2.off);
+    });
+    setItem(''); setPrice('');
+  });
+  return (
+    <div className="loot" style={{ marginBottom: 8 }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ width: 110 }}>Discount %<input type="number" min={0} max={100} value={off} placeholder={String(sh.off || 0)} onChange={e => setOff(e.target.value)} /></label>
+        <button className="btn sm" disabled={off === ''} onClick={() => { update(d => { const s2 = d.world.shop[id]; if (s2) { setShopOff(s2, +off); addLog(s2.off ? `Prices are ${s2.off}% off at ${s2.name || 'the shop'}.` : `Prices are back to normal at ${s2.name || 'the shop'}.`, 'story'); } }); setOff(''); }}>Set discount</button>
+        <label style={{ flex: '2 1 160px' }}>Add an item they asked for<input list="itemList" value={item} placeholder="e.g. Oran Berry, or TM Surf" onChange={e => setItem(e.target.value)} /></label>
+        <label style={{ width: 100 }}>Price<input type="number" min={0} value={price} placeholder="list" onChange={e => setPrice(e.target.value)} /></label>
+        <button className="btn sm" disabled={!item.trim()} onClick={add}>Add</button>
+      </div>
+    </div>
+  );
+}
+
+/** A shop the DM opens anywhere: the players asked for a berry stand, a weaponsmith, a certain traveling merchant… */
+function DmShop() {
+  const s = useGame(), dm = isDM(), sh = s.world.shop.dm;
+  const [kind, setKind] = useState('travel');
+  const [name, setName] = useState('');
+  if (!sh && !dm) return null;
+  const open = () => { update(d => { const n = name.trim() || SHOP_KINDS[kind].n; d.world.shop.dm = { name: n, stock: rollDmShop(kind, d.world.layer) }; addLog(`The team found a shop: ${n}.`, 'story'); }); setName(''); };
+  if (!sh) return (
+    <details className="card">
+      <summary>🛒 Open a shop or merchant</summary>
+      <p className="small muted tip" style={{ marginTop: 0 }}>For when the players go looking for something: a berry stand in town, a weaponsmith, a merchant on the road. It shows up here for everyone until you close it.</p>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ flex: '1 1 180px' }}>Kind of shop<select value={kind} onChange={e => setKind(e.target.value)}>{Object.entries(SHOP_KINDS).map(([key, v]) => <option key={key} value={key}>{v.n}</option>)}</select></label>
+        <label style={{ flex: '1 1 180px' }}>Name (optional)<input value={name} maxLength={40} placeholder={SHOP_KINDS[kind].n} onChange={e => setName(e.target.value)} /></label>
+        <button className="btn primary" onClick={open}>Open it</button>
+      </div>
+    </details>
+  );
+  return (
+    <section className="card callout">
+      <div className="row between"><h2 style={{ margin: 0 }}>🛒 {sh.name || 'Shop'}</h2>
+        {dm ? <button className="btn sm" onClick={() => update(d => { delete d.world.shop.dm; })}>Close shop</button> : null}</div>
+      <p className="small" style={{ margin: '4px 0 8px' }}>Team money {money(s.storage.poke)}{sh.off ? <> · <b>{sh.off}% off</b></> : null}</p>
+      {dm ? <ShopDm id="dm" /> : null}
+      {sh.stock.length ? <ShopList stock={sh.stock} onBuy={i => buy(d => d.world.shop.dm?.stock, i)} /> : <p className="small muted">Nothing on the shelves yet.</p>}
+      <SellList />
+    </section>
   );
 }
 
@@ -94,6 +156,15 @@ function AreaPanel({ n, k }: { n: WorldNode; k: number }) {
       <p className="small">{n.d}</p>
     </>
   );
+  // The DM rolls for what the team finds, or picks it (`force` is the d20 result that gives it).
+  const exploreNow = (force?: number) => run(() => update(d => {
+    const nn = nodeById(d.world.at);
+    if (!nn || nn.kind !== 'wild') return;
+    const e2 = exploreWild(d.world.layer, nn, force);
+    if (force) e2.roll = 0;
+    d.world.area[nn.id] = e2;
+    addLog(`${nn.n}: ${e2.text}`);
+  }));
   const areaEv = (fn: (ev: NonNullable<typeof w.area[string]>) => void) => run(() => update(d => { const ev = d.world.area[d.world.at]; if (ev && !ev.done) fn(ev); }));
   let body: React.ReactNode = null;
   if ((n.kind === 'wild' || n.kind === 'rift') && layerClosed(k)) {
@@ -104,8 +175,10 @@ function AreaPanel({ n, k }: { n: WorldNode; k: number }) {
       <div className="safe">Safe Zone: no battles here. {dm ? '' : 'Dennis can give the team a free long rest.'}</div>
       {dm ? <div className="row" style={{ margin: '8px 0' }}><button className="btn" onClick={() => { update(() => { lootTeam().forEach(longRest); addLog(`The team rested at ${n.n}. HP, PP and assists are restored.`); }); toast('Long rest: everyone is fully healed.'); }}>Long rest here (free)</button></div> : null}
       <h3>Shop · Team money {money(s.storage.poke)}</h3>
-      <p className="small muted" style={{ marginTop: 0 }}>New stock every time the team walks in.{shop?.off != null ? <> <b>Haggled: {shop.off}% off this visit.</b></> : null}</p>
+      <p className="small muted" style={{ marginTop: 0 }}>New stock every time the team walks in.</p>
+      {shop?.off ? <p className="small" style={{ margin: '0 0 8px' }}><b>{shop.off}% off this visit.</b></p> : null}
       {shop && shop.off == null && dm ? <Haggle id={n.id} k={k} /> : null}
+      {shop && dm ? <ShopDm id={n.id} /> : null}
       {shop ? <ShopList stock={shop.stock} onBuy={i => buy(d => d.world.shop[d.world.at]?.stock, i)} />
         : dm ? <button className="btn" onClick={() => update(d => { d.world.shop[n.id] = { stock: rollHavenShop(d.world.layer, n.t) }; })}>Open the shop</button>
         : <p className="small muted">The shop opens when the team arrives.</p>}
@@ -114,10 +187,10 @@ function AreaPanel({ n, k }: { n: WorldNode; k: number }) {
   } else if (n.kind === 'wild') {
     const ev = w.area[n.id];
     body = <>
-      <p className="small muted" style={{ marginTop: 0 }}>Wild Pokémon around level {lvl + 1}{LAYERS[k].types.length ? ', mostly ' + LAYERS[k].types.map(T).join('/') + ' types' : ''}. <b>High risk, high reward:</b> 1.5× XP and better loot, until the team clears the Labyrinth below this layer.</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Wild Pokémon around level {lvl + 1}{LAYERS[k].types.length ? ', mostly ' + LAYERS[k].types.map(T).join('/') + ' types' : ''}. <b>High risk, high reward:</b> 1.5× XP and better loot, until the team clears the Labyrinth below this layer.</p>
       {ev ? (
         <div className="event">
-          <div className="small muted">Exploration roll: d20 {ev.roll}</div>
+          <div className="small muted">{ev.roll ? `Exploration roll: d20 ${ev.roll}` : 'Dennis chose this.'}</div>
           <p style={{ margin: '4px 0 8px' }}><b>{ev.text}</b></p>
           {ev.kind === 'battle' ? <>
             <EnemyList list={ev.enemies} />
@@ -157,9 +230,14 @@ function AreaPanel({ n, k }: { n: WorldNode; k: number }) {
       {dm ? (
         <div className="row" style={{ marginTop: 10 }}>
           <button className={`btn ${ev ? '' : 'primary'}`} disabled={!!ev && ev.kind === 'battle' && !ev.done}
-            onClick={() => run(() => update(d => { const nn = nodeById(d.world.at); if (!nn || nn.kind !== 'wild') return; const e2 = exploreWild(d.world.layer, nn); d.world.area[nn.id] = e2; addLog(`${nn.n}: ${e2.text}`); }))}>
+            onClick={() => exploreNow()}>
             {ev ? 'Explore again' : 'Explore'}
           </button>
+          <select aria-label="Choose what the team finds" style={{ width: 'auto' }} value="" disabled={!!ev && ev.kind === 'battle' && !ev.done} onChange={e => { if (+e.target.value) exploreNow(+e.target.value); }}>
+            <option value="">…or choose what they find</option>
+            <option value="1">Wild battle</option><option value="9">Something to forage</option><option value="13">Wandering merchant</option>
+            <option value="15">A Pokémon in need</option><option value="17">Team Razorwind</option><option value="19">Treasure chest</option>
+          </select>
         </div>
       ) : null}
     </>;
@@ -258,7 +336,7 @@ function CastCard({ k }: { k: number }) {
   return (
     <section className="card">
       <h2>Characters in {LAYERS[k].n}</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>{dm ? 'Mark who the team has met, then use − and + as the players get along with them. Players never see the DM notes.' : 'Pokémon the team has met here, and how you get along.'}</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>{dm ? 'Mark who the team has met, then use − and + as the players get along with them. Players never see the DM notes.' : 'Pokémon the team has met here, and how you get along.'}</p>
       {list.map(c => <CastRow key={c.id} c={c} k={k} />)}
       {dm ? <AddPerson k={k} /> : null}
     </section>
@@ -337,13 +415,13 @@ function TeamsCard({ k }: { k: number }) {
   return (
     <section className="card">
       <h2>Teams</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Two teams from the same graduating class. Everyone knows each other, and how they treat the players depends on how the players treat them.</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Two teams from the same graduating class. Everyone knows each other, and how they treat the players depends on how the players treat them.</p>
       {Object.entries(TEAMS).map(([t, v]) => {
         const members = CAST.filter(c => c.team === t), seen = members.filter(c => dm || s.world.met[c.id]);
         return (
           <div key={t}>
             <h3 style={{ marginBottom: 2 }}>{v.n}</h3>
-            <p className="small muted" style={{ marginTop: 0 }}>{v.d}</p>
+            <p className="small muted tip" style={{ marginTop: 0 }}>{v.d}</p>
             {dm && t === 'rivals' ? <button className="btn primary" style={{ marginBottom: 8 }} onClick={() => run(() => { update(() => { if (G().game.battle && !G().game.battle!.result) throw new Error('Finish the current battle first.'); startRivalSpar(); }); setUi({ tab: 'battle' }); })}>⚔️ Start the graduation spar</button> : null}
             {seen.length ? seen.map(c => <CastRow key={c.id} c={c} k={k} />) : <p className="small muted">The team has not met them yet.</p>}
           </div>
@@ -387,7 +465,7 @@ function QuestCard() {
   return (
     <section className="card">
       <h2>Quests</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Jobs from the village guildmasters. XP goes to every Pokémon still standing; money and item rewards go to the team.</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>Jobs from the village guildmasters. XP goes to every Pokémon still standing; money and item rewards go to the team.</p>
       {dm && !w.graduated ? <button className="btn primary" style={{ marginBottom: 8 }} onClick={graduate}>Graduation day: give 2 Escape Ropes and post Orrin&apos;s first quests</button> : null}
       {open.map(q => (
         <div className="list-item" key={q.id}>
@@ -442,7 +520,7 @@ export default function WorldView() {
   const places = (
     <section className="card">
       <h2>Places in {L.n}</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>{dm ? 'Players vote on where to go. You make the final call.' : 'Vote on where the team goes next. Dennis makes the final call.'}</p>
+      <p className="small muted tip" style={{ marginTop: 0 }}>{dm ? 'Players vote on where to go. You make the final call.' : 'Vote on where the team goes next. Dennis makes the final call.'}</p>
       {nodes.map(n => {
         const K = KIND[n.kind], v = votes[n.id] || [], isHere = n.id === here.id;
         return (
@@ -490,6 +568,7 @@ export default function WorldView() {
         <p className="small wintro">{L.intro}</p>
         <div className="wmapwrap"><WorldMap k={k} nodes={nodes} sel={sel} onSel={onSel} /></div>
       </section>
+      <DmShop />
       <div className="dgrid wgrid">
         {dm ? <><AreaPanel n={here} k={k} />{places}</> : <>{places}<AreaPanel n={here} k={k} /></>}
       </div>

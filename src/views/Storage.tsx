@@ -46,7 +46,7 @@ export default function Storage() {
     <>
       <section className="card">
         <div className="row between"><h2 style={{ margin: 0 }}>Team storage</h2><span className="mono" style={{ fontWeight: 700 }}>{money(st.poke)}</span></div>
-        <p className="small muted" style={{ margin: '4px 0 10px' }}>Shared by the whole team. Take items into a bag before a dungeon.</p>
+        <p className="small muted tip" style={{ margin: '4px 0 10px' }}>Shared by the whole team. Take items into a bag before a dungeon.</p>
         {mine.length ? (
           <label style={{ marginBottom: 8 }}>Take items into
             <select value={target?.id} onChange={e => setToId(e.target.value)}>

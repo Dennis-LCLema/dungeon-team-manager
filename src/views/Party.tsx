@@ -36,16 +36,19 @@ function AddForm({ open }: { open: boolean }) {
   const [nick, setNick] = useState('');
   const [player, setPlayer] = useState('');
   const [level, setLevel] = useState(1);
+  const [shiny, setShiny] = useState(false);
   const lvl = Math.max(1, Math.min(MAX_LEVEL, level || 1));
-  const done = (id: string, name: string) => { setUi({ activeId: id, tab: 'sheet' }); setSpecies(''); setNick(''); toast(`${name} joined the team!`); };
+  const done = (id: string, name: string) => { setUi({ activeId: id, tab: 'sheet' }); setSpecies(''); setNick(''); setShiny(false); toast(`${name} joined the team!`); };
   const add = () => run(() => {
     if (!species.trim()) return toast('Type a species name first.', 'bad');
     const c = createChar(species, nick.trim(), player, lvl);
+    if (shiny) c.shiny = true;
     update(s => { s.chars.push(c); addLog(`${nameOf(c)} joined the team${player ? ' with ' + player : ''}.`); });
     done(c.id, nameOf(c));
   });
   const addCustom = () => {
     const c = createManual(species, nick.trim(), player, lvl);
+    if (shiny) c.shiny = true;
     update(s => { s.chars.push(c); });
     done(c.id, nameOf(c));
   };
@@ -63,11 +66,12 @@ function AddForm({ open }: { open: boolean }) {
         </label>
         <label>Starting level (1–20)<input type="number" min={1} max={20} value={level} onChange={e => setLevel(+e.target.value)} /></label>
       </div>
+      <label className="row" style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}><input type="checkbox" checked={shiny} onChange={e => setShiny(e.target.checked)} /> ✨ Shiny (stays shiny when it evolves or Mega Evolves)</label>
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn primary" onClick={add}>Add to team</button>
         <button className="btn" onClick={addCustom}>Custom / homebrew Pokémon</button>
       </div>
-      <p className="small muted" style={{ margin: '8px 0 0' }}>Types, stats, moves and evolutions come from the built-in Pokédex (Gen 1–9).</p>
+      <p className="small muted tip" style={{ margin: '8px 0 0' }}>Types, stats, moves and evolutions come from the built-in Pokédex (Gen 1–9).</p>
     </details>
   );
 }

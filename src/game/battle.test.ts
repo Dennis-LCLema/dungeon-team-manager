@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { abilityInfo, bGet, buildEnemy, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
+import { abilityInfo, bGet, buildEnemy, handleKO, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
 import { AC, M, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
@@ -223,6 +223,7 @@ describe('shiny sprites', () => {
     expect(spriteUrl('Aron', true)).toBe(sprites.shiny[sprites.names.aron]);
     expect(spriteUrl('Aggron', true)).not.toBe(spriteUrl('Aggron', false));
     expect(spriteUrl('Riolu', true)).toBe(spriteUrl('Riolu', false));
+    expect(spriteUrl('Aggron-Mega', true)).not.toBe(spriteUrl('Aggron-Mega', false)); // shiny stays shiny when it Mega Evolves
     vi.unstubAllGlobals();
   });
 });
@@ -597,5 +598,43 @@ describe('the three logs', () => {
     const e = G().log.entries;
     expect(e.filter(x => logKind(x) === 'battle')).toHaveLength(LOG_KEEP);
     expect(e.some(x => x.text === 'The team met Old Maren.')).toBe(true);
+  });
+});
+
+describe('DM shops and chosen encounters', () => {
+  it('stocks a shop by kind, and a discount never stacks', async () => {
+    const { SHOP_KINDS, rollDmShop, setShopOff, exploreWild, layerNodes } = await import('./explore');
+    const { ITEM_BY_ID } = await import('./data');
+    for (const kind of ['berry', 'weapon', 'armor', 'med', 'material']) {
+      const stock = rollDmShop(kind, 2);
+      expect(stock.length, kind).toBeGreaterThan(0);
+      stock.forEach(l => expect(SHOP_KINDS[kind].cats, `${kind}: ${l.name}`).toContain(ITEM_BY_ID[l.itemId!].cat));
+    }
+    const tms = rollDmShop('tm', 2);
+    expect(tms.length).toBeGreaterThan(2);
+    tms.forEach(l => expect(l.name).toMatch(/^TM /));
+    const sh = { stock: [{ ...tms[0], price: 200 }, { ...tms[1], price: 100, sold: true }] } as { stock: typeof tms; off?: number };
+    setShopOff(sh, 50); setShopOff(sh, 25);
+    expect(sh.stock.map(l => l.price)).toEqual([150, 100]); // from the first price, and sold lines stay put
+    setShopOff(sh, 100);
+    expect(sh.stock[0].price).toBe(0);
+    setShopOff(sh, 0);
+    expect(sh.stock[0].price).toBe(200);
+    const wild = layerNodes(1).find(n => n.kind === 'wild')!;
+    update(() => { expect([1, 9, 13, 15, 19].map(f => exploreWild(1, wild, f).kind)).toEqual(['battle', 'forage', 'merchant', 'rescue', 'treasure']); });
+  });
+
+  it('a purified Shadow joins the hero who reached out when nobody lands the final blow', () => {
+    const hero = createChar('Charmander', 'Blaze', 'Luis', 5);
+    update(s => {
+      s.chars = [hero];
+      const foe = buildEnemy('Zubat', 5, true, 'enemy');
+      startBattle([hero.id], [foe], null, 'normal');
+      const e = s.game.battle!.enemies[0];
+      e.heartGauge = 20; e.purifier = hero.id; e.hpCur = 0;
+      handleKO(e, null); // fainted from a burn
+      expect(e.outReason).toMatch(/Purified/);
+      expect(hero.assists.map(a => a.name)).toEqual(['Zubat']);
+    });
   });
 });

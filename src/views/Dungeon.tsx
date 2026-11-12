@@ -217,7 +217,7 @@ function PlanForm() {
             <input type="checkbox" checked={f.types.includes(t)} onChange={e => setF({ ...f, types: e.target.checked ? [...f.types, t] : f.types.filter(x => x !== t) })} /><TypeChip t={t} />
           </label>
         ))}</div>
-        <p className="small muted">Leave every type unticked for any type. Species you list override the types.</p>
+        <p className="small muted tip">Leave every type unticked for any type. Species you list override the types.</p>
         <button className="btn primary" onClick={prep}>Call the team to lock moves</button>
       </section>
       <section className="card"><h2>How a run works</h2>

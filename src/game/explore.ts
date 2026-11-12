@@ -2,11 +2,11 @@
    The Labyrinth has 40 floors. Every 5 floors a Gatekeeper guards the way down, and beyond it a new overworld (a Layer)
    opens with Safe Zones, wild areas, two Red Rifts, a Waystone for teleporting, and the next descent. */
 import { clampN, roll, toID, uid } from '../lib/util';
-import { CAST, FLAVOR, ITEM_BY_ID, LAB_FLOORS, LAYERS, NODE_POS, RAR, RESCUES, THEME, TRAPS, labLvl, layerLvl } from './data';
+import { CAST, FLAVOR, ITEMS, ITEM_BY_ID, LAB_FLOORS, LAYERS, NODE_POS, RAR, RESCUES, THEME, TRAPS, labLvl, layerLvl } from './data';
 import { dex } from './dex';
 import { G, addLog, me } from './store';
-import type { AreaEv, Dungeon, Enemy, FloorMap } from './types';
-import { TIER, addLoot, blessTeam, levelCap, lootLine, lootTeam, pickItem, rollChest, rollRarity } from './rules';
+import type { AreaEv, Dungeon, Enemy, FloorMap, LootLine } from './types';
+import { TIER, addLoot, blessTeam, levelCap, lootLine, lootTeam, pickItem, randomTM, rollChest, rollRarity } from './rules';
 import { buildEnemy, buildRivals } from './battle';
 
 export const ek = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
@@ -201,6 +201,33 @@ export function rollHavenShop(k: number, t: string | null | undefined, markup?: 
   return out;
 }
 
+/** Shops the DM can open anywhere, when the players go looking for one. `cats` are item categories; null is a bit of everything. */
+export const SHOP_KINDS: Record<string, { n: string; cats: string[] | null }> = {
+  travel: { n: 'Traveling merchant', cats: null }, general: { n: 'General store', cats: ['berry', 'med', 'seed', 'gear'] },
+  berry: { n: 'Berry stand', cats: ['berry'] }, med: { n: 'Potion shop', cats: ['med'] }, seed: { n: 'Seed and orb seller', cats: ['seed', 'orb'] },
+  weapon: { n: 'Weaponsmith', cats: ['weapon'] }, armor: { n: 'Armorer', cats: ['armor'] }, held: { n: 'Held item shop', cats: ['held'] },
+  evo: { n: 'Evolution stone dealer', cats: ['evo'] }, gear: { n: 'Explorer outfitter', cats: ['gear'] },
+  material: { n: 'Material and treasure trader', cats: ['treasure', 'gummi', 'shadow'] }, tm: { n: 'TM seller', cats: ['tm'] },
+};
+const shopLine = (def: (typeof ITEMS)[number], markup = 1) =>
+  Object.assign(lootLine(def, 'Shop', ''), { price: Math.max(30, Math.round((def.v || 100) * markup * (0.9 + roll(5) * 0.04))), sold: false });
+/** Stock for one of the DM's shops: up to 8 items of its kind, none rarer than the layer allows. */
+export function rollDmShop(kind: string, k: number) {
+  const cats = SHOP_KINDS[kind]?.cats, tier = TIER(layerLvl(k));
+  if (!cats) return rollHavenShop(k, null, 1.2);
+  if (cats.includes('tm')) {
+    const seen = new Set<string>(), out: ReturnType<typeof shopLine>[] = [];
+    for (let i = 0; i < 30 && out.length < 6; i++) { const tm = randomTM(tier); if (tm && !seen.has(tm.n)) { seen.add(tm.n); out.push(shopLine(tm)); } }
+    return out;
+  }
+  return ITEMS.filter(i => cats.includes(i.cat) && 'curvl'.indexOf(i.r) <= tier + 1).sort(() => Math.random() - 0.5).slice(0, 8).map(d => shopLine(d));
+}
+/** Set a shop's discount (0 to 100%), always from each item's first price, so changing it twice doesn't stack. */
+export function setShopOff(sh: { stock: LootLine[]; off?: number }, off: number) {
+  sh.off = Math.max(0, Math.min(100, Math.round(off) || 0));
+  sh.stock.forEach(l => { if (l.sold) return; l.base ??= l.price || 0; l.price = Math.round(l.base * (100 - sh.off!) / 100); });
+}
+
 export function prepRun(cfg: Partial<Dungeon> & { name: string }) {
   const s = G();
   s.dungeon = Object.assign({ state: 'prep' as const, floor: 0, map: null, cleared: false, extra: '' }, cfg);
@@ -227,8 +254,9 @@ export function finishRun(g: Dungeon) {
   }
 }
 
-export function exploreWild(k: number, node: WorldNode): AreaEv {
-  const lvl = layerLvl(k), tier = TIER(lvl), r = roll(20);
+/** Roll what the team finds in a wild area. The DM can pass `force` (a d20 result) to choose it instead. */
+export function exploreWild(k: number, node: WorldNode, force?: number): AreaEv {
+  const lvl = layerLvl(k), tier = TIER(lvl), r = force || roll(20);
   if (r <= 8) {
     // Overworld fights are high risk, high reward: tougher foes, 1.5× XP and better loot.
     const enemies = rollEncounter({ state: 'in', name: node.n, lvl: Math.min(20, lvl + 1), types: LAYERS[k].types, floor: 1, kind: 'wild', extra: '' }, 'enemy');
@@ -240,7 +268,7 @@ export function exploreWild(k: number, node: WorldNode): AreaEv {
     return { kind: 'forage', roll: r, text: `The team searched the area and found ${def.n}.`, item: lootLine(def, node.n, `Foraging, ${RAR[def.r]}`) };
   }
   if (r <= 14) return { kind: 'merchant', roll: r, text: 'A wandering Kecleon sets up a stall on the path. Prices are a little high out here.', stock: rollHavenShop(k, null, 1.2).slice(0, 4) };
-  if (r <= 16 || (r <= 18 && !G().world.sparDone)) return { kind: 'rescue', roll: r, text: RESCUES[roll(RESCUES.length) - 1], xp: 20 * lvl, poke: 40 * lvl };
+  if (r <= 16 || (r <= 18 && !G().world.sparDone && !force)) return { kind: 'rescue', roll: r, text: RESCUES[roll(RESCUES.length) - 1], xp: 20 * lvl, poke: 40 * lvl };
   if (r <= 18) {
     // After the graduation spar, Team Razorwind turns up on the road: one or two rivals looking for a rematch.
     const rivals = CAST.filter(c => c.team === 'rivals').sort(() => Math.random() - 0.5).slice(0, roll(2));

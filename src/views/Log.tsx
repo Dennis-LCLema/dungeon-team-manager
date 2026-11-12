@@ -30,7 +30,7 @@ export default function Log() {
         <div className="row between"><h2 style={{ margin: 0 }}>📜 Previously on…</h2>{dm ? <button className="btn sm primary" onClick={show}>Show everyone</button> : null}</div>
         {recap.length ? (
           <ul className="small" style={{ paddingLeft: 18, margin: '8px 0 0' }}>{recap.map((l, i) => <li key={i}>{l}</li>)}</ul>
-        ) : <p className="small muted" style={{ margin: '6px 0 0' }}>The highlights of your last session show up here: level-ups, evolutions, quests, bosses and new friends.</p>}
+        ) : <p className="small muted tip" style={{ margin: '6px 0 0' }}>The highlights of your last session show up here: level-ups, evolutions, quests, bosses and new friends.</p>}
       </section>
       {LOGS.map(([kind, name, hint], i) => {
         const list = e.filter(x => logKind(x) === kind);

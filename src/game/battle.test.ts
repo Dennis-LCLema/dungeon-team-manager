@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { abilityInfo, bGet, buildEnemy, handleKO, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
+import { abilityInfo, bGet, buildEnemy, handleKO, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { AC, M, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
+import { AC, M, MAX_TEAM, activeTeam, lootTeam, setReserve, realDice, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
 import { G, LOG_KEEP, addLog, logKind, setUi, update } from './store';
 import { getMove } from './dex';
 import type { AttackResult, Char, Enemy } from './types';
@@ -636,5 +636,53 @@ describe('DM shops and chosen encounters', () => {
       expect(e.outReason).toMatch(/Purified/);
       expect(hero.assists.map(a => a.name)).toEqual(['Zubat']);
     });
+  });
+});
+
+describe('real dice and several Pokémon per player', () => {
+  it('a player chooses real dice for themselves, or the DM turns it on for everyone', () => {
+    const a = createChar('Riolu', '', 'Juan', 3), b = createChar('Aron', '', 'Luis', 3);
+    update(s => { s.chars = [a, b]; s.rules = { difficulty: 'normal' }; });
+    expect([realDice(a), realDice(b)]).toEqual([false, false]);
+    update(s => { s.rules.dice = { juan: true }; });
+    expect([realDice(a), realDice(b)]).toEqual([true, false]);
+    update(s => { s.rules.ownDice = true; });
+    expect(realDice(b)).toBe(true);
+    update(s => { s.rules = { difficulty: 'normal' }; });
+  });
+
+  it('keeps a travelling team of 6: extras wait in the Safe Zone and stay out of battles and loot', async () => {
+    const { layerNodes } = await import('./explore');
+    const haven = layerNodes(0).find(n => n.kind === 'haven')!, wild = layerNodes(0).find(n => n.kind === 'wild')!;
+    const seven = Array.from({ length: 7 }, (_, i) => createChar('Riolu', 'R' + i, 'Juan', 1));
+    seven[6].reserve = true;
+    update(s => { s.chars = seven; s.game.battle = null; s.dungeon.state = 'idle'; s.world.at = wild.id; });
+    expect(MAX_TEAM).toBe(6);
+    expect(activeTeam()).toHaveLength(6);
+    expect(lootTeam().some(c => c.reserve)).toBe(false);
+    setUi({ meName: 'Juan' });
+    expect(() => update(s => setReserve(s.chars[0], true))).toThrow(/Safe Zone/); // players swap only in a Safe Zone
+    update(s => { s.world.at = haven.id; });
+    expect(() => update(s => setReserve(s.chars[6], false))).toThrow(/full/);
+    update(s => { setReserve(s.chars[0], true); setReserve(s.chars[6], false); });
+    expect(activeTeam().map(c => c.nickname)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']);
+    setUi({ meName: 'Dennis' });
+    update(s => { s.world.at = wild.id; setReserve(s.chars[1], true); }); // the DM can anywhere
+    expect(activeTeam()).toHaveLength(5);
+  });
+
+  it('a stunt the DM rules on gives the next attack an edge, or trips it up', () => {
+    const { heroId, foeId } = duel();
+    setUi({ meName: 'Dennis' });
+    const tryIt = (level: string, d20: number) => { update(s => { s.game.battle!.stunt = { id: heroId, text: 'Backflip strike', stat: 'spe' }; resolveStunt(level, d20); }); return G().game.battle!; };
+    let b = tryIt('wild', 20);
+    expect(b.last).toMatchObject({ stunt: true });
+    expect(b.last!.save).toMatch(/it works! .*\+2d6/);
+    expect(b.stunt).toBeUndefined();
+    expect(attack(heroId, foeId)!.adv).toBe(true);
+    expect(attack(heroId, foeId)!.adv).toBe(false);
+    b = tryIt('easy', 1);
+    expect(b.last!.save).toMatch(/goes wrong/);
+    expect(attack(heroId, foeId)!.dis).toBe(true);
   });
 });

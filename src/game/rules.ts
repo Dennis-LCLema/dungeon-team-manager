@@ -3,10 +3,10 @@
 import { T, roll, rollDice, slug, toID, uid, fmt, money } from '../lib/util';
 import { ABILITY_FX, CHART, DEMEANORS, DIFF, ITEMS, ITEM_BY_ID, ITEM_BY_NAME, LAYERS, NATURES, QUIZ, RAR, STATS, STATUS, type ItemDef } from './data';
 import { LVL_RATIO, dex, dexReady, evoLine, getEvos, getMove, getPokemonAny, type MegaForm } from './dex';
-import { G, addLog, announce, me, toast } from './store';
+import { G, addLog, announce, isDM, me, toast } from './store';
 import type { AbilityFx, BagItem, Char, Stats, EvoTarget, Fighter, LootLine, Mon, Move, MoveClass, Shared, StatKey, Tree } from './types';
 import { BT, blog, knockout } from './battle';
-import { leaveDungeon, partyChars } from './explore';
+import { leaveDungeon, nodeById, partyChars } from './explore';
 
 export const MAX_LEVEL = 20;
 export const MEGA_LEVEL = 10;
@@ -66,6 +66,23 @@ export const natureMod = (c: Mon, k: StatKey | 'heart') => {
   return n ? (n[0] === k ? 1 : n[1] === k ? -1 : 0) : 0;
 };
 export const M = (c: Mon, k: StatKey | 'heart') => mod(score(c, k)) + natureMod(c, k);
+
+/** Does this hero's player roll real dice? The DM switched it on for everyone, or the player chose it for themselves. */
+export const realDice = (c: Char) => { const r = G().rules; return !!r.ownDice || !!r.dice?.[String(c.player || '').toLowerCase()]; };
+/** The travelling team holds this many Pokémon, players' own included. The rest wait in the Safe Zone. */
+export const MAX_TEAM = 6;
+export const activeTeam = () => G().chars.filter(c => !c.reserve);
+/** Send a Pokémon to wait in the Safe Zone, or call it back to the team. Players can only do this while the team is in a
+    Safe Zone, between battles and dungeon runs; the DM can anywhere. Throws (changing nothing) when it isn't allowed. */
+export function setReserve(c: Char, away: boolean) {
+  const s = G();
+  if (s.game.battle && !s.game.battle.result) throw new Error('Finish the battle first.');
+  if (s.dungeon.state !== 'idle') throw new Error('The team is on a dungeon run. Finish it first.');
+  if (!isDM() && nodeById(s.world.at)?.kind !== 'haven') throw new Error('Travel to a Safe Zone to change who is on the team.');
+  if (!away && !!c.reserve && activeTeam().length >= MAX_TEAM) throw new Error(`The team is full (${MAX_TEAM}). Send someone to the Safe Zone first.`);
+  if (away) c.reserve = true; else delete c.reserve;
+  addLog(away ? `${nameOf(c)} stays behind in the Safe Zone.` : `${nameOf(c)} joins the travelling team.`, 'story');
+}
 
 /* ---------- Rolled stats ---------- */
 /** Six ability scores, each 4d6 with the lowest die dropped (3 to 18). */
@@ -431,7 +448,7 @@ export function evoTargetFor(c: Char, def: ItemDef) {
   const fx = def.fx || {};
   return (c.evo?.targets || []).find(t => (fx.evo && String(t.how).toLowerCase().includes(fx.evo.toLowerCase())) || (fx.evoTrade && /^trade/i.test(t.how)));
 }
-export const lootTeam = () => { const p = G().chars.filter(c => c.player); return p.length ? p : G().chars; };
+export const lootTeam = () => { const t = activeTeam(), p = t.filter(c => c.player); return p.length ? p : t; };
 export const avgLevel = () => { const p = lootTeam(); return p.length ? Math.max(1, Math.round(p.reduce((s, c) => s + c.level, 0) / p.length)) : 1; };
 export const usableBag = (c: Char) =>
   (c.items || []).map((it, i) => [it, i] as const).filter(([it]) => { const d0 = defOf(it); return !d0 || (!slotOf(d0) && !d0.fx.autoRevive && !d0.fx.keep); });

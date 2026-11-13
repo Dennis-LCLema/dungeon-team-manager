@@ -35,6 +35,8 @@ export interface Char extends Mon {
   inDungeon: boolean; img: string; hpv?: number; xp?: number; createdAt?: number; custom?: boolean; tree: Tree;
   megaForm?: number; megaReady?: boolean; mega?: { state: 'draft' | 'pending' | 'active' | 'passed'; trial: string; by?: string };
   blessings?: number; friend?: number;
+  /** Waiting in the Safe Zone: not on the travelling team, so no battles, dungeons, loot or XP until called back. */
+  reserve?: boolean;
   /** Six ability scores rolled once (4d6, drop the lowest). The player places them, then they lock for good. */
   rolled?: number[];
   /** Where the rolled scores went. Once set, these replace the scores worked out from the species. */
@@ -74,6 +76,8 @@ export interface AttackResult {
   save?: string;
   /** A triggered ability rather than a move. */
   ability?: boolean;
+  /** A stunt the DM ruled on. */
+  stunt?: boolean;
   /** HP restored, for the green number on the battle scene. */
   heal?: number;
 }
@@ -90,7 +94,9 @@ export interface Battle {
   fx?: FieldFx[];
   /** Times each hero has triggered its ability this battle. */
   uses?: Record<string, number>;
-  /** A player picked this move and is rolling real dice; the DM types the result in. */
+  /** A stunt a player described, waiting for the DM to say how hard it is. `stat` is the ability it rolls. */
+  stunt?: { id: string; text: string; stat: string };
+  /** A player picked this move (-1 is Purify) and is rolling real dice; the DM types the result in. */
   ask?: { move: number; target: string };
   /** Stat changes from moves like Growl and Swords Dance, by fighter id: -3 to +3 each, until the battle ends. */
   stage?: Record<string, Record<string, number>>;
@@ -147,7 +153,7 @@ export interface Shared {
   game: { battle: Battle | null; bsetup: { pcs: string[]; enemies: Enemy[] }; events?: GameEvent[] };
   dungeon: Dungeon;
   loot: { lines: LootLine[] };
-  rules: { difficulty: string; /** Players roll real dice for attacks and the DM types them in. */ ownDice?: boolean };
+  rules: { difficulty: string; /** Players roll real dice for attacks and the DM types them in. */ ownDice?: boolean; /** Players who chose real dice for themselves, by lowercase name. */ dice?: Record<string, boolean> };
   world: World;
   storage: { items: BagItem[]; poke: number };
   log: { entries: LogEntry[] };

@@ -71,7 +71,7 @@ export default function DM() {
     const amt = Math.round(+xp.amt || 0);
     if (amt <= 0) return toast('Type an XP amount.', 'bad');
     update(d => {
-      const list = xp.to === 'team' ? d.chars.filter(x => x.player && x.hpCur > 0) : d.chars.filter(x => x.id === xp.to);
+      const list = xp.to === 'team' ? d.chars.filter(x => x.player && !x.reserve && x.hpCur > 0) : d.chars.filter(x => x.id === xp.to);
       if (!list.length) { toast('Nobody to give XP to.', 'bad'); return; }
       list.forEach(x => { x.xp = (x.xp || 0) + amt; });
       addLog(`${me()?.name} gave ${amt} XP to ${xp.to === 'team' ? 'the team' : nameOf(list[0])}.`);

@@ -154,6 +154,7 @@ export function nextTurn(depth = 0) {
   const b = BT();
   if (!b || b.result) return;
   delete b.ask;
+  delete b.stunt;
   for (let i = 0; i < b.order.length; i++) {
     b.turn++;
     if (b.turn >= b.order.length) {
@@ -165,6 +166,7 @@ export function nextTurn(depth = 0) {
   }
   const x = bGet(b.order[b.turn]), f = heldFx(x);
   if (x && b.flags?.[x.id]?.protect) b.flags[x.id].protect = false; // Protect lasts until its user's next turn
+  if (x && b.flags?.[x.id]?.stunted) b.flags[x.id].stunted = false; // one stunt per turn
   if (x && !isOut(x) && f.regen && x.hpCur < hpMaxOf(x)) {
     x.hpCur = Math.min(hpMaxOf(x), x.hpCur + f.regen);
     blog(`${nameOf(x)} restored a little HP with its Leftovers.`);
@@ -305,8 +307,8 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   const surpriseAdv = !!bt && bt.round === 1 && ((bt.surprise === 'ambush' && !aTeam) || (bt.surprise === 'jump' && aTeam));
   // Advantage and disadvantage cancel out, as in tabletop rules.
   // One-shot edges from abilities and support moves: this attack uses them up, hit or miss.
-  const mine = bt?.flags?.[actor.id] || {}, pow = !!mine.power, edge = !!mine.edge, off = !!mine.off;
-  if (pow || edge || off) Object.assign(flag(actor.id), { power: false, edge: false, off: false });
+  const mine = bt?.flags?.[actor.id] || {}, wild = !!mine.wild, pow = !!mine.power || wild, edge = !!mine.edge, off = !!mine.off;
+  if (pow || edge || off) Object.assign(flag(actor.id), { power: false, wild: false, edge: false, off: false });
   const insp = !manual && actor.kind !== 'enemy' && !!actor.inspired; // earned by staying in character
   if (insp) (actor as Char).inspired = false;
   const up = surpriseAdv || fld.adv || pow || edge || insp, down = fld.dis || off, adv = !manual && up && !down, dis = !manual && down && !up;
@@ -326,7 +328,7 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   let dmg = dice + M(actor, key) + (stab ? prof(actor.level) : 0) + heldDmg(actor, mv);
   if (ab === 'rock-head' && mv.cls === 'physical') dmg += 2;
   dmg += fld.dmg + stageOf(actor, key) + treeFx(actor, 'dmg');
-  if (pow) { const pb = rollDice('1d6'); dmg += pb; extra += ` Its ability adds ${pb}.`; }
+  if (pow) { const pb = rollDice(wild ? '2d6' : '1d6'); dmg += pb; extra += ` +${pb} bonus damage.`; }
   if (ab === 'flash-fire' && mv.type === 'fire' && flag(actor.id).flash) { const fb = rollDice('1d6'); dmg += fb; extra += ` Flash Fire adds ${fb}.`; }
   let eff = effectiveness(mv.type, target);
   if (tab === 'flash-fire' && mv.type === 'fire') { eff = 0; flag(target.id).flash = true; extra += ` ${tn}'s Flash Fire soaks up the flames and powers up!`; }
@@ -448,6 +450,29 @@ export function callAssist(actor: Char, i: number, target: Fighter | null) {
   checkEnd();
 }
 
+/* ---------- Stunts: anything a player dreams up ---------- */
+/** How hard the DM says a stunt is, and what pulling it off is worth on the next attack. Failing gives disadvantage. */
+export const STUNTS: Record<string, { n: string; dc: number; flag: string; win: string }> = {
+  easy: { n: 'Easy', dc: 10, flag: 'edge', win: 'advantage' },
+  tricky: { n: 'Tricky', dc: 13, flag: 'power', win: 'advantage and +1d6 damage' },
+  wild: { n: 'Wild', dc: 16, flag: 'wild', win: 'advantage and +2d6 damage' },
+};
+/** The DM rules on the waiting stunt: an ability check against the difficulty, rolled by the app or typed in from real dice.
+    It doesn't use the turn. A natural 20 always works and a natural 1 never does. */
+export function resolveStunt(level: string, typed?: number) {
+  const b = BT(), st = b?.stunt, L = STUNTS[level];
+  if (!b || !st || !L || !isDM()) return;
+  const actor = bGet(b.order.find(o => o.id === st.id));
+  delete b.stunt;
+  if (!actor || isOut(actor)) return;
+  const who = nameOf(actor), stat = st.stat as Parameters<typeof M>[1], d = typed ?? roll(20), m = M(actor, stat), ok = d !== 1 && (d === 20 || d + m >= L.dc);
+  Object.assign(flag(actor.id), ok ? { [L.flag]: true } : { off: true }, { stunted: true });
+  const res: AttackResult = { id: uid(), actor: who, actorSide: 'team', target: who, move: 'a stunt', moveType: typesOf(actor)[0] || 'normal', status: true, stunt: true,
+    save: `“${st.text}” Check ${d}${fmt(m)} = ${d + m} vs ${L.n} ${L.dc}${typed != null ? ' (real dice)' : ''}: ${ok ? `it works! ${who} gets ${L.win} on its next attack.` : `it goes wrong. ${who} has disadvantage on its next attack.`}` };
+  blog(`${who} tries a stunt. ${res.save}`);
+  b.last = res;
+}
+
 /* ---------- Abilities a player triggers ---------- */
 /** The ability button for a hero, or null when its ability works on its own (Sturdy, Flash Fire…). */
 export function abilityInfo(x: Fighter) {
@@ -532,7 +557,7 @@ export function startRivalSpar() {
   addLog('The graduation spar against Team Razorwind begins!');
 }
 
-const rivalParty = () => { const s = G(), p = s.chars.filter(c => c.player); return p.length ? p : s.chars; };
+const rivalParty = () => { const t = G().chars.filter(c => !c.reserve), p = t.filter(c => c.player); return p.length ? p : t; };
 /** Team Razorwind members as fighters: same level as the player each one chose, hero-grade HP, smart moves. */
 export function buildRivals(ids: string[]): Enemy[] {
   const s = G(), party = rivalParty();

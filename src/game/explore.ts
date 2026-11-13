@@ -10,7 +10,7 @@ import { TIER, addLoot, blessTeam, levelCap, lootLine, lootTeam, pickItem, rando
 import { buildEnemy, buildRivals } from './battle';
 
 export const ek = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
-export const partyChars = () => { const p = G().chars.filter(c => c.inDungeon); return p.length ? p : G().chars.filter(c => c.player); };
+export const partyChars = () => { const p = G().chars.filter(c => c.inDungeon); return p.length ? p : G().chars.filter(c => c.player && !c.reserve); };
 export const mapNb = (m: FloorMap, k: string) => Object.keys(m.edges).filter(e => e.split('|').includes(k)).map(e => e.split('|').find(z => z !== k)!);
 
 export function genFloor(dg: Dungeon): FloorMap {

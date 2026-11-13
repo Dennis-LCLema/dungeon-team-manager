@@ -116,15 +116,19 @@ function Shell() {
   if (dm && tab === 'play') tab = 'party';
   if (!u) return <Login />;
 
-  const nl = s.loot.lines.length, mine = s.chars.find(owns);
+  const nl = s.loot.lines.length, myCount = s.chars.filter(owns).length, mine = myCount > 0;
   const tabs: [string, string][] = dm
     ? [['party', 'Team'], ...(act ? [['sheet', nameOf(act)] as [string, string]] : []), ['world', 'World'], ['dungeon', 'Dungeon'],
        ['battle', 'Battle' + (b && !b.result ? ' •' : '')], ['storage', 'Storage'], ['log', 'Log'], ['dm', 'DM tools' + (nl ? ` (${nl})` : '')], ['account', 'Admin']]
-    : [['play', 'Play' + (myTurnChar() ? ' •' : '')], ...(mine ? [['mine', 'My Pokémon'] as [string, string]] : []),
+    : [['play', 'Play' + (myTurnChar() ? ' •' : '')], ...(mine ? [['mine', 'My Pokémon' + (myCount > 1 ? ` (${myCount})` : '')] as [string, string]] : []),
        ...(act && !owns(act) ? [['sheet', nameOf(act)] as [string, string]] : []), ['world', 'World'], ['party', 'Team'], ['storage', 'Storage'], ['log', 'Log']];
   const isOn = (k: string) => tab === k || (k === 'mine' && tab === 'sheet' && owns(act));
   const go = (k: string) => {
-    if (k === 'mine') { const m0 = G().chars.find(owns); setUi(m0 ? { activeId: m0.id, tab: 'sheet' } : { tab: 'play' }); }
+    if (k === 'mine') {
+      // A player with several Pokémon: each tap moves on to the next one.
+      const all = G().chars.filter(owns), at = getUi().tab === 'sheet' ? all.findIndex(c => c.id === getUi().activeId) : -1, m0 = all[(at + 1) % (all.length || 1)];
+      setUi(m0 ? { activeId: m0.id, tab: 'sheet' } : { tab: 'play' });
+    }
     else setUi({ tab: k });
     window.scrollTo(0, 0);
   };

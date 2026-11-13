@@ -6,7 +6,7 @@ import {
   AC, M, MAX_LEVEL, MEGA_LEVEL, SAC, addItemTo, applyItem, appLvl, canMegaInfo, changeLevel, clampHP, customMove, defByName, defOf, diceFor, equippedOf,
   evolve, fmtMega, gameLvl, heldFx, hitDie, longRest, looseDef, mastery, matchups, maxHP, megaBase, megaForms, megaOf, nameOf, pointsOf, prof,
   score, shortRestHeal, takeOne, toTableMove, typesOf, rollMoveOutside,
-  slotOf, weaponHit, abilityFxText, forgetMove, learnMove, lockScores, natureText, quizResult, rollScores,
+  slotOf, weaponHit, abilityFxText, realDice, forgetMove, learnMove, lockScores, natureText, quizResult, rollScores,
 } from '../game/rules';
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
@@ -230,18 +230,34 @@ function AbilityCard({ c }: { c: Char }) {
 
 /** D&D-style ability checks: d20 + the stat's modifier, posted to the shared log so the DM sees every roll. */
 function AbilityChecks({ c }: { c: Char }) {
+  const dm = isDM(), rules = useGame().rules, real = realDice(c), key = String(c.player || '').toLowerCase(), mine = me()?.name.toLowerCase() === key;
+  const [typed, setTyped] = useState('');
   const checks: [StatKey | 'heart', string][] = [['atk', 'STR'], ['spe', 'DEX'], ['def', 'CON'], ['spa', 'INT'], ['spd', 'WIS'], ['heart', 'CHA']];
   const check = (k: StatKey | 'heart', label: string) => {
-    const d = roll(20), m = M(c, k), total = d + m;
-    const msg = `${nameOf(c)} rolled a ${label} check: ${d}${fmt(m)} = ${total}${d === 20 ? ' (natural 20!)' : d === 1 ? ' (natural 1)' : ''}.`;
+    // The DM can always type a d20 that was rolled at the table instead of letting the app roll.
+    const own = dm && typed !== '', t = Math.round(+typed);
+    if (own && !(t >= 1 && t <= 20)) return toast('Type the d20 they rolled (1 to 20).', 'bad');
+    const d = own ? t : roll(20), m = M(c, k), total = d + m;
+    const msg = `${nameOf(c)} rolled a ${label} check: ${d}${fmt(m)} = ${total}${d === 20 ? ' (natural 20!)' : d === 1 ? ' (natural 1)' : ''}${own ? ' (real dice)' : ''}.`;
     update(() => addLog(msg, 'battle'));
     toast(`🎲 ${label} check: ${total}`);
+    setTyped('');
   };
   return (
-    <div className="row" style={{ marginTop: 10, gap: 6 }} role="group" aria-label="Ability checks">
-      <span className="small muted">🎲 Check:</span>
-      {checks.map(([k, label]) => <button key={k} className="btn sm" title={`d20 ${fmt(M(c, k))}`} onClick={() => check(k, label)}>{label} <span className="mono small muted">{fmt(M(c, k))}</span></button>)}
-    </div>
+    <>
+      <div className="row" style={{ marginTop: 10, gap: 6 }} role="group" aria-label="Ability checks">
+        <span className="small muted">🎲 Check:</span>
+        {checks.map(([k, label]) => <button key={k} className="btn sm" title={`d20 ${fmt(M(c, k))}`} disabled={real && !dm} onClick={() => check(k, label)}>{label} <span className="mono small muted">{fmt(M(c, k))}</span></button>)}
+        {dm ? <input type="number" min={1} max={20} value={typed} onChange={e => setTyped(e.target.value)} placeholder="real d20" aria-label="The d20 they rolled, if they used real dice" style={{ width: 96 }} /> : null}
+      </div>
+      {c.player && (mine || dm) ? (
+        <label className="row small" style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+          <input type="checkbox" checked={real} disabled={!!rules.ownDice} onChange={e => { const on = e.target.checked; update(d => { (d.rules.dice ||= {})[key] = on; }); }} />
+          {mine ? "I roll my own dice (I tell Dennis each roll)" : `${c.player} rolls real dice`}{rules.ownDice ? ' · on for everyone' : ''}
+        </label>
+      ) : null}
+      {real && !dm ? <p className="small" style={{ margin: '4px 0 0' }}>🎲 Roll a real d20, add the number on the button, and tell Dennis. He types it in.</p> : null}
+    </>
   );
 }
 

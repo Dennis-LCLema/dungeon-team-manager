@@ -115,7 +115,7 @@ export function AttackPopup() {
   if (!p) return null;
   const rolling = tumble && landedId !== p.id;
   const kind = p.status ? 'status' : !p.hit ? 'miss' : p.eff === 0 ? 'immune' : p.crit ? 'crit' : 'hit';
-  const head = rolling ? 'Rolling…' : p.ability ? 'ABILITY!' : !p.status && !p.hit && p.d20 == null ? 'BLOCKED!'
+  const head = rolling ? 'Rolling…' : p.stunt ? 'STUNT!' : p.ability ? 'ABILITY!' : !p.status && !p.hit && p.d20 == null ? 'BLOCKED!'
     : { status: 'STATUS MOVE', miss: p.fumble ? 'MISS! (natural 1)' : 'MISS!', immune: 'NO EFFECT', crit: 'CRITICAL HIT!', hit: 'HIT!' }[kind];
   // On the battle screen the card sits in the page under the scene; on any other tab it floats at the bottom.
   const slot = document.getElementById('hitslot');

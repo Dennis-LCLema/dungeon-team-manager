@@ -3,9 +3,9 @@ import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { Die, stillMotion } from '../components/Dice';
 import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { STAGE_NAME, abilityInfo, callAssist, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, STUNTS, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
-import { M, MAX_LEVEL, abilityFxText, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
+import { M, MAX_LEVEL, abilityFxText, lootTeam, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
 import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared, Status } from '../game/types';
 import { T, fmt, roll, slug, uid } from '../lib/util';
@@ -31,7 +31,7 @@ function RivalBattle() {
     if (!d.chars.length) throw new Error('Add the team first.');
     if (spar) { startRivalSpar(); return; }
     if (!pick.length) throw new Error('Pick at least one rival.');
-    const party = d.chars.filter(c => c.player).length ? d.chars.filter(c => c.player) : d.chars;
+    const party = lootTeam();
     startBattle(party.map(c => c.id), buildRivals(pick), null, 'normal', 'Team Razorwind wants a rematch!');
     addLog(`A rival battle against ${rivals.filter(r => pick.includes(r.id)).map(r => r.name).join(', ')} begins!`);
   }));
@@ -62,7 +62,7 @@ function Setup() {
     update(d => { d.game.bsetup.enemies.push(buildEnemy(e.species, Math.max(1, Math.min(MAX_LEVEL, e.level || 1)), e.shadow, e.side)); });
   });
   const start = () => update(d => {
-    const pcs = d.game.bsetup.pcs.map(id => d.chars.find(x => x.id === id)).filter(Boolean) as Char[];
+    const pcs = d.game.bsetup.pcs.map(id => d.chars.find(x => x.id === id)).filter(x => x && !x.reserve) as Char[];
     if (!pcs.length) { toast('Pick at least one team member.', 'bad'); return; }
     if (!d.game.bsetup.enemies.some(x => x.side !== 'npc')) { toast('Add at least one enemy.', 'bad'); return; }
     let sk = surprise, why = '';
@@ -74,7 +74,7 @@ function Setup() {
       <RivalBattle />
       <section className="card">
         <h2>1. Who's fighting?</h2>
-        {s.chars.length ? s.chars.map(c => (
+        {s.chars.length ? s.chars.filter(c => !c.reserve).map(c => (
           <label key={c.id} className="list-item" style={{ flexDirection: 'row', color: 'var(--ink)', fontSize: 15 }}>
             <input type="checkbox" checked={bs.pcs.includes(c.id)} onChange={ev => update(d => {
               const p = d.game.bsetup;
@@ -190,14 +190,16 @@ function TurnPanel({ b }: { b: Battle }) {
   const [pick, setPick] = useState('');
   const [itemSel, setItemSel] = useState(0);
   const [assistSel, setAssistSel] = useState(0);
-  const realDice = !!useGame().rules.ownDice;
+  const rules = useGame().rules, realDice = !!rules.ownDice;
   const [ownMove, setOwnMove] = useState<number | null>(null);
   const [ownD20, setOwnD20] = useState('');
   const [ownDmg, setOwnDmg] = useState('');
   const want = b.ask && ownMove == null ? b.ask.target : pick; // a player waiting on real dice already chose the target
   const tgtId = tgtList.some(o => o.id === want) ? want : tgtList[0]?.id;
   const tgtO = b.order.find(o => o.id === tgtId), tgt = tgtO ? bGet(tgtO) : null, tgtFoe = !!tgtO && sideOf(tgtO) !== mySide;
-  const isPc = cur.ref === 'pc', hero = isPc ? (actor as Char) : null, own = realDice && isPc;
+  const isPc = cur.ref === 'pc', hero = isPc ? (actor as Char) : null;
+  // Real dice for this turn: the DM set it for everyone, or this hero's player chose it. Chosen before the roll, never after.
+  const diceKey = String(hero?.player || '').toLowerCase(), own = isPc && (realDice || !!rules.dice?.[diceKey]);
   const moves: Move[] = isPc ? equippedOf(hero!) : actor.moves;
   const shadowFoes = foes.map(o => bGet(o) as Enemy).filter(x => x?.shadow);
   const readyAssists = hero ? hero.assists.map((a, i) => [a, i] as const).filter(([a]) => !a.used) : [];
@@ -253,20 +255,48 @@ function TurnPanel({ b }: { b: Battle }) {
     if (ownCheck.hit && !(ownDmg !== '' && dmg >= 0)) return toast('Type their damage roll.', 'bad');
     fire(omIdx, { d20, dmg: ownCheck.hit ? dmg : undefined });
   };
-  const purify = () => onTurn((bb, _c, a) => {
+  const purify = (typed?: number) => onTurn((bb, _c, a) => {
     const t = target(G()) as Enemy | null;
     if (!t || t.kind !== 'enemy' || !t.shadow) { toast('Target a Shadow Pokémon to purify.', 'bad'); return; }
     const boost = bb.boost?.[a.id] || 0;
     t.purifier = a.id;
     if (boost) delete bb.boost[a.id];
-    const r = boost ? Math.max(roll(20), roll(20)) : roll(20), bonus = prof(a.level) + M(a, 'heart'), tot = r + bonus;
+    const real = isDM() && typed != null;
+    const r = real ? typed! : boost ? Math.max(roll(20), roll(20)) : roll(20), bonus = prof(a.level) + M(a, 'heart'), tot = r + bonus;
     if (tot >= 12) {
       const amt = 20 + Math.max(0, M(a, 'heart')) * 5 + boost;
       t.heartGauge = Math.max(0, t.heartGauge - amt);
-      blog(`${nameOf(a)} reaches out to ${t.name} (${r}${fmt(bonus)} = ${tot} vs 12). Heart Gauge −${amt} → ${t.heartGauge}.${t.heartGauge <= 30 ? ' Its heart is ready to open. Knock it out to purify it!' : ''}`);
+      blog(`${nameOf(a)} reaches out to ${t.name} (${r}${fmt(bonus)} = ${tot} vs 12${real ? ', real dice' : ''}). Heart Gauge −${amt} → ${t.heartGauge}.${t.heartGauge <= 30 ? ' Its heart is ready to open. Knock it out to purify it!' : ''}`);
     } else blog(`${nameOf(a)} tries to reach ${t.name} (${tot} vs 12), but its heart stays shut.`);
     nextTurn();
   });
+  // Purify with real dice goes through the same wait-for-the-DM step as an attack (move -1).
+  const askPurify = () => {
+    if (!tgt || tgt.kind !== 'enemy' || !tgt.shadow) return toast('Target a Shadow Pokémon to purify.', 'bad');
+    if (!own) return purify();
+    if (dm) { setOwnMove(-1); setOwnD20(''); }
+    else onTurn((bb, _c, a) => { bb.ask = { move: -1, target: tgtId || '' }; blog(`${nameOf(a)} reaches out to ${nameOf(tgt)} and rolls real dice.`); });
+  };
+  const heartBonus = prof(actor.level) + M(actor, 'heart');
+  // Stunts: the player says what they do, the DM says how hard it is, then the dice decide.
+  const [stuntOpen, setStuntOpen] = useState(false);
+  const [stuntText, setStuntText] = useState('');
+  const [stuntStat, setStuntStat] = useState('spe');
+  const [stuntD20, setStuntD20] = useState('');
+  const stunted = !!b.flags?.[actor.id]?.stunted;
+  const askStunt = () => {
+    if (stuntText.trim().length < 3) return toast('Say what your Pokémon does.', 'bad');
+    onTurn((bb, _c, a) => { bb.stunt = { id: a.id, text: stuntText.trim(), stat: stuntStat }; blog(`${nameOf(a)} wants to try a stunt: “${stuntText.trim()}”`); });
+    setStuntOpen(false); setStuntText('');
+  };
+  const ruleStunt = (level: string) => run(() => {
+    const t = Math.round(+stuntD20), real = stuntD20 !== '';
+    if (real && !(t >= 1 && t <= 20)) return toast('Type the d20 they rolled (1 to 20).', 'bad');
+    if (own && !real) return toast(`${hero?.player || 'This player'} rolls real dice. Type their d20 first.`, 'bad');
+    update(() => resolveStunt(level, real ? t : undefined));
+    setStuntD20('');
+  });
+  const STATS6: [string, string][] = [['atk', 'STR'], ['spe', 'DEX'], ['def', 'CON'], ['spa', 'INT'], ['spd', 'WIS'], ['heart', 'CHA']];
   const doItem = () => onTurn((_bb, _c, a) => {
     const r = applyItem(a as Char, bag[itemSel]?.[1] ?? -1, target(G()) || a, true);
     if (!r) return;
@@ -301,6 +331,18 @@ function TurnPanel({ b }: { b: Battle }) {
   return (
     <div className="card callout turn">
       <div className="row between"><h2 style={{ margin: 0 }}>{isPc && owns(hero) ? 'Your turn: ' : ''}{nameOf(actor)}</h2><span className="small muted">Round {b.round}</span></div>
+      {b.stunt ? (
+        <div className="banner">
+          <b>🤸 Stunt:</b> “{b.stunt.text}” <span className="small muted">{STATS6.find(x => x[0] === b.stunt!.stat)?.[1]} check {fmt(M(actor, b.stunt.stat as 'atk'))}</span>
+          {dm ? (
+            <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {Object.entries(STUNTS).map(([k, v]) => <button key={k} className="btn sm primary" title={`Works: ${v.win} on the next attack. Fails: disadvantage.`} onClick={() => ruleStunt(k)}>{v.n} ({v.dc})</button>)}
+              <input type="number" min={1} max={20} value={stuntD20} onChange={e => setStuntD20(e.target.value)} placeholder={own ? 'their d20' : 'real d20'} aria-label="The d20 they rolled, if they used real dice" style={{ width: 96 }} />
+              <button className="btn sm ghost" onClick={() => update(d => { if (d.game.battle) { blog('Dennis says no to the stunt.'); delete d.game.battle.stunt; } })}>Not this time</button>
+            </div>
+          ) : <div className="small" style={{ marginTop: 4 }}>{own ? 'Roll your real d20 and tell Dennis. He decides how hard it is.' : 'Waiting for Dennis to say how hard it is.'}</div>}
+        </div>
+      ) : null}
       <label style={{ margin: '10px 0' }}>1. Pick a target
         <select value={tgtId} onChange={e => setPick(e.target.value)}>
           {tgtList.map(o => { const x = bGet(o)!; return <option key={o.id} value={o.id}>{sideOf(o) === mySide ? 'Ally: ' : ''}{nameOf(x)} ({x.hpCur}/{hpMaxOf(x)} HP)</option>; })}
@@ -310,14 +352,34 @@ function TurnPanel({ b }: { b: Battle }) {
         <span className="small muted" style={{ fontWeight: 600 }}>2. Pick a move</span>
         {isPc && dm ? (
           <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }}>
-            <input type="checkbox" checked={realDice} onChange={e => { const on = e.target.checked; setOwnMove(null); update(d => { d.rules.ownDice = on; if (d.game.battle) delete d.game.battle.ask; }); }} /> Players roll real dice (I type them in)
+            <input type="checkbox" checked={realDice} onChange={e => { const on = e.target.checked; setOwnMove(null); update(d => { d.rules.ownDice = on; if (d.game.battle) delete d.game.battle.ask; }); }} /> Everyone rolls real dice (I type them in)
+            {own && !realDice ? <span className="tag good">{hero!.player} chose real dice</span> : null}
+          </label>
+        ) : isPc && owns(hero) ? (
+          <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }} title="Choose before you pick a move. Once the app has rolled, that roll stands.">
+            <input type="checkbox" checked={own} disabled={realDice || !!b.ask} onChange={e => { const on = e.target.checked; update(d => { (d.rules.dice ||= {})[diceKey] = on; }); }} /> I'll roll my own dice
           </label>
         ) : null}
       </div>
-      {b.ask && !dm && moves[b.ask.move] ? (
+      {b.ask && !dm ? (
         <div className="banner">
-          <b>🎲 Roll your real dice!</b> A d20 for <b>{T(moves[b.ask.move].name)}</b>{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number. If it hits, roll {moves[b.ask.move].dice} for damage too.
-          <div className="row" style={{ marginTop: 8 }}><button className="btn sm" onClick={dropAsk}>Pick another move</button></div>
+          <b>🎲 Roll your real dice!</b> {b.ask.move === -1
+            ? <>A d20 for your Heart check{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number.</>
+            : <>A d20 for <b>{T(moves[b.ask.move]?.name || 'your move')}</b>{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number. If it hits, roll {moves[b.ask.move]?.dice} for damage too.</>}
+          <div className="small muted" style={{ marginTop: 4 }}>The choice is locked in once you roll. Picked the wrong thing? Ask Dennis to cancel it.</div>
+        </div>
+      ) : null}
+      {own && omIdx === -1 && dm ? (
+        <div className="loot" style={{ marginBottom: 10 }}>
+          <b>Purify</b> on <b>{tgt ? nameOf(tgt) : '?'}</b>
+          <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
+            <label style={{ width: 220 }}>Their d20 for the Heart check{b.boost?.[actor.id] ? ' (roll twice, keep the higher)' : ''}<input type="number" min={1} max={20} autoFocus value={ownD20} onChange={e => setOwnD20(e.target.value)} /></label>
+          </div>
+          {d20 >= 1 && d20 <= 20 ? <p className="small" style={{ margin: '8px 0' }}>{d20}{fmt(heartBonus)} = <b>{d20 + heartBonus}</b> vs 12: <b>{d20 + heartBonus >= 12 ? 'It works!' : 'Its heart stays shut.'}</b></p> : null}
+          <div className="row">
+            <button className="btn primary" disabled={!(d20 >= 1 && d20 <= 20)} onClick={() => purify(d20)}>Apply</button>
+            <button className="btn ghost" onClick={dropAsk}>Cancel</button>
+          </div>
         </div>
       ) : null}
       {own && om && dm ? (
@@ -352,7 +414,7 @@ function TurnPanel({ b }: { b: Battle }) {
         }) : <p className="small muted">No moves equipped.</p>}
       </div>
       {noPunch ? <div className="row" style={{ marginTop: 8 }}><button className="btn" onClick={doStruggle}>Struggle (1d8)</button><span className="small muted">No damaging move has PP left.</span></div> : null}
-      {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || abil || (!isPc && dm) ? <>
+      {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || abil || isPc || (!isPc && dm) ? <>
         <div className="small muted" style={{ margin: '12px 0 6px', fontWeight: 600 }}>Or do something else</div>
         <div className="row">
           {bag.length ? (
@@ -363,7 +425,8 @@ function TurnPanel({ b }: { b: Battle }) {
               <button className="btn" onClick={doItem}>Use item</button>
             </span>
           ) : null}
-          {mySide === 'team' && shadowFoes.length ? <button className="btn" onClick={purify}>💜 Purify (Heart check)</button> : null}
+          {isPc ? <button className="btn" disabled={stunted || !!b.stunt} title="A backflip strike, a swing off a vine, anything you can think of. One per turn; it doesn't use your turn." onClick={() => setStuntOpen(!stuntOpen)}>🤸 {stunted ? 'Stunt done' : 'Try a stunt'}</button> : null}
+          {mySide === 'team' && shadowFoes.length ? <button className="btn" onClick={askPurify}>💜 Purify (Heart check)</button> : null}
           {downed.map(x => <button key={x.id} className="btn" onClick={() => rally(x.id)}>Help up {nameOf(x)}</button>)}
           {readyAssists.length ? (
             <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
@@ -378,6 +441,18 @@ function TurnPanel({ b }: { b: Battle }) {
           {!isPc && dm ? <button className="btn gold" onClick={() => run(() => update(autoTurn))}>Auto turn</button> : null}
         </div>
       </> : null}
+      {stuntOpen && !b.stunt && !stunted ? (
+        <form className="loot" style={{ marginTop: 10 }} onSubmit={e => { e.preventDefault(); askStunt(); }}>
+          <label>What does {nameOf(actor)} do?<input autoFocus value={stuntText} maxLength={140} onChange={e => setStuntText(e.target.value)} placeholder="e.g. Backflip off the wall and strike from above" /></label>
+          <div className="row" style={{ marginTop: 8, gap: 6, alignItems: 'flex-end' }}>
+            <label style={{ flex: '1 1 180px' }}>Using<select value={stuntStat} onChange={e => setStuntStat(e.target.value)}>
+              {STATS6.map(([k, l]) => <option key={k} value={k}>{l} ({({ atk: 'strength', spe: 'speed and agility', def: 'toughness', spa: 'cleverness', spd: 'focus', heart: 'charm' } as Record<string, string>)[k]}) {fmt(M(actor, k as 'atk'))}</option>)}
+            </select></label>
+            <button className="btn primary" type="submit">Ask Dennis</button>
+          </div>
+          <p className="small muted tip" style={{ margin: '6px 0 0' }}>Dennis says how hard it is. Pull it off and your next attack gets advantage, plus bonus damage for harder stunts. Fail and it has disadvantage.</p>
+        </form>
+      ) : null}
       <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}><button className="btn ghost" onClick={() => onTurn(() => nextTurn())}>Skip turn</button></div>
     </div>
   );

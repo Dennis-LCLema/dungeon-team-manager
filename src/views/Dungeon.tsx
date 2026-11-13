@@ -11,7 +11,7 @@ import { T, clampN, fmt, money, roll, rollDice } from '../lib/util';
 import { EnemyList } from './World';
 
 export function LockPanel({ dg }: { dg: Dungeon }) {
-  const s = useGame(), party = s.chars.filter(c => c.player);
+  const s = useGame(), party = s.chars.filter(c => c.player && !c.reserve);
   const locked = party.filter(c => c.inDungeon).length, all = party.length > 0 && locked === party.length;
   const lock = (id: string, on: boolean) => run(async () => {
     const x = G().chars.find(y => y.id === id);
@@ -28,7 +28,7 @@ export function LockPanel({ dg }: { dg: Dungeon }) {
     });
   });
   const enter = () => update(d => {
-    if (!d.chars.filter(x => x.player).every(x => x.inDungeon)) { toast('Not everyone has locked in yet.', 'bad'); return; }
+    if (!d.chars.filter(x => x.player && !x.reserve).every(x => x.inDungeon)) { toast('Not everyone has locked in yet.', 'bad'); return; }
     const g = d.dungeon;
     g.state = 'in'; g.floor = g.start || 1; g.cleared = false;
     if (g.kind === 'labyrinth') g.lvl = labLvl(g.floor);

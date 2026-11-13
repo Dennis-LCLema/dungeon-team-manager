@@ -8,7 +8,8 @@ import { ago } from '../lib/util';
 
 const LOGS: [NonNullable<LogEntry['kind']>, string, string][] = [
   ['story', '🗺️ Adventure log', 'Who the team met, where they went, quests, level-ups and the decisions they made.'],
-  ['battle', '⚔️ Battle log', 'Battles, XP, moves and rolls made outside battle.'],
+  ['battle', '⚔️ Battle log', 'Battles, XP and moves used outside battle.'],
+  ['roll', '🎲 Roll log', 'Dice rolled with the dice button, and ability checks.'],
   ['item', '🎒 Item log', 'Loot, shopping, gifts, storage and items used.'],
 ];
 

@@ -572,7 +572,7 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
 
 /** Battle scene: the background slot, both sides' sprites, and a lunge/shake for the latest move. */
 function Stage({ b }: { b: Battle }) {
-  const last = b.last, attack = !!last && !last.status, tc = { '--tc': (last && TCOL[last.moveType]) || '#fff' } as React.CSSProperties;
+  const last = b.last, attack = !!last && !last.status, phys = last?.cls === 'physical', landed = attack && !!last!.hit && !!last!.dmg, tc = { '--tc': (last && TCOL[last.moveType]) || '#fff' } as React.CSSProperties;
   const fig = (o: OrderEntry, k: number) => {
     const x = bGet(o);
     if (!x) return null;
@@ -584,9 +584,9 @@ function Stage({ b }: { b: Battle }) {
     const float = !last || !isTarget ? '' : last.heal ? `+${last.heal}`
       : !attack ? '' : last.hit ? (last.dmg ? `−${last.dmg}` : 'No effect') : last.d20 == null ? 'Blocked' : 'Miss';
     return (
-      <div key={o.id + (anim || float ? last!.id : '')} style={tc} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
+      <div key={o.id + (anim || float ? last!.id : '')} style={tc} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${isTarget && attack && last!.ko ? 'ko' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
         {float ? <i className={`float ${last!.heal ? 'heal' : !last!.hit ? 'miss' : last!.crit ? 'crit' : 'dmg'}`}>{float}</i> : null}
-        {isTarget && attack && last!.hit && last!.dmg ? <i className="burst" /> : null}
+        {isTarget && landed ? <><i className="burst" /><i className="ring" />{phys ? <i className="slash" /> : null}</> : null}
         <Avatar c={x} size={60} />
         <span>{x.status ? STATUS[x.status].g + ' ' : ''}{n}</span>
         <HpBar cur={x.hpCur} max={hpMaxOf(x)} />
@@ -594,12 +594,15 @@ function Stage({ b }: { b: Battle }) {
     );
   };
   const idx = b.order.map((o, k) => [o, k] as const);
+  // The side that takes a hit shakes; harder for a crit or a knockout.
+  const quake = (from: string) => (landed && last!.actorSide === from ? last!.id : ''), big = landed && (!!last!.crit || !!last!.ko);
   return (
     <div className="stage" aria-hidden="true"
       style={{ backgroundImage: `url(backgrounds/${b.bg || 'battle'}.webp), url(backgrounds/battle.webp), ${sceneUrl(b.scene ?? 0)}` }}>
-      <div className="side team">{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => fig(o, k))}</div>
-      <div className="side foes">{idx.filter(([o]) => sideOf(o) === 'enemy').map(([o, k]) => fig(o, k))}</div>
-      {attack && last!.d20 != null ? <i key={last!.id} style={tc} className={`zap ${last!.actorSide === 'team' ? 'to-r' : 'to-l'}`} /> : null}
+      <div key={'team' + quake('enemy')} className={`side team ${quake('enemy') ? 'quake' : ''} ${big ? 'big' : ''}`}>{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => fig(o, k))}</div>
+      <div key={'foes' + quake('team')} className={`side foes ${quake('team') ? 'quake' : ''} ${big ? 'big' : ''}`}>{idx.filter(([o]) => sideOf(o) === 'enemy').map(([o, k]) => fig(o, k))}</div>
+      {/* Special moves fly across with a trail; physical moves land as a slash on the target instead. */}
+      {attack && last!.d20 != null && !phys ? ['', 't1', 't2'].map(t => <i key={last!.id + t} style={tc} className={`zap ${t} ${last!.actorSide === 'team' ? 'to-r' : 'to-l'}`} />) : null}
       {attack && last!.hit && last!.crit ? <i key={'crit' + last!.id} className="critflash" /> : null}
     </div>
   );

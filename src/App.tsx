@@ -1,6 +1,7 @@
 import { MusicPlayer } from './components/Music';
 import { useEffect, useRef, useState } from 'react';
 import { AttackPopup, Announce, EventOverlay, Modal, Toasts } from './components/Overlays';
+import { DiceRoller } from './components/DiceRoller';
 import { BT, bGet, myTurnChar } from './game/battle';
 import { DataLists } from './components/Catalog';
 import { loadDex } from './game/dex';
@@ -37,7 +38,7 @@ function toggleTheme() {
 
 function useBattleNotices() {
   const s = useGame(), ui = useUi();
-  const seen = useRef<{ battle?: string | null; prep?: string | null; turn?: string; hit?: string; events?: Set<string> }>({});
+  const seen = useRef<{ battle?: string | null; prep?: string | null; turn?: string; hit?: string; events?: Set<string>; roll?: string }>({});
   const b = s.game.battle, dm = isDM(), signedIn = !!me();
 
   // Players jump to the Play tab when a battle starts or the DM calls the team.
@@ -76,6 +77,17 @@ function useBattleNotices() {
     if (last && last.id !== seen.current.hit) setUi({ popup: last });
     seen.current.hit = last?.id || '';
   }, [last]);
+
+  // A player rolled with the dice button or made an ability check: tell the DM at once.
+  const rolled = s.log.entries.find(e => e.kind === 'roll');
+  useEffect(() => {
+    const id = rolled?.id || '', was = seen.current.roll;
+    seen.current.roll = id;
+    if (was === undefined || !rolled || id === was || !dm || rolled.who === me()?.name || Date.now() - rolled.t > 60e3) return;
+    toast('🎲 ' + rolled.text);
+    sfx('dice');
+    try { navigator.vibrate?.(80); } catch { /* not supported */ }
+  }, [rolled, dm]);
 
   // Level-ups go to the Pokémon's owner (the DM gets a short note); evolutions and Mega Evolutions go to everyone.
   // Skips what was already there when the page loaded, and anything more than 5 minutes old.
@@ -207,6 +219,7 @@ export default function App() {
           {dexState === 'loading' ? <><span className="spin" /> Loading the Pokédex…</> : <><p>{dexState}</p><button className="btn" onClick={() => location.reload()}>Reload</button></>}
         </div></main>
       )}
+      <DiceRoller />
       <Toasts />
       <Modal />
       <EventOverlay />

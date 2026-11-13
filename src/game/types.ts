@@ -78,6 +78,8 @@ export interface AttackResult {
   ability?: boolean;
   /** A stunt the DM ruled on. */
   stunt?: boolean;
+  /** Physical moves slash across the battle scene; special moves fly across it. */
+  cls?: MoveClass;
   /** HP restored, for the green number on the battle scene. */
   heal?: number;
 }
@@ -144,7 +146,7 @@ export interface World {
 }
 export interface User { name: string; role: 'dm' | 'player'; hash?: string }
 /** `kind` picks the log an entry shows in. Without one, the text decides (see logKind in store.ts). */
-export interface LogEntry { id: string; t: number; who: string; text: string; kind?: 'story' | 'battle' | 'item' }
+export interface LogEntry { id: string; t: number; who: string; text: string; kind?: 'story' | 'battle' | 'item' | 'roll' }
 /** A character the DM added in the app. Same shape as the built-in story cast. */
 export interface Person { id: string; name: string; species: string; role: string; desc: string; secret?: string; layer?: number; types?: string[] }
 

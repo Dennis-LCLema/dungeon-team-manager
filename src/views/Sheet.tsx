@@ -239,7 +239,7 @@ function AbilityChecks({ c }: { c: Char }) {
     if (own && !(t >= 1 && t <= 20)) return toast('Type the d20 they rolled (1 to 20).', 'bad');
     const d = own ? t : roll(20), m = M(c, k), total = d + m;
     const msg = `${nameOf(c)} rolled a ${label} check: ${d}${fmt(m)} = ${total}${d === 20 ? ' (natural 20!)' : d === 1 ? ' (natural 1)' : ''}${own ? ' (real dice)' : ''}.`;
-    update(() => addLog(msg, 'battle'));
+    update(() => addLog(msg, 'roll'));
     toast(`🎲 ${label} check: ${total}`);
     setTyped('');
   };

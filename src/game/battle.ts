@@ -266,7 +266,7 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   const who = nameOf(actor), tn = nameOf(target), bt = BT();
   if (mv.ppMax != null) { if (mv.ppCur <= 0) return null; mv.ppCur--; }
   const aTeam = onTeam(actor), fld = fieldFor(bt, aTeam);
-  const res: AttackResult = { id: uid(), actor: who, actorSide: aTeam ? 'team' : 'enemy', target: tn, move: T(mv.name), moveType: mv.type, manual: !!manual };
+  const res: AttackResult = { id: uid(), actor: who, actorSide: aTeam ? 'team' : 'enemy', target: tn, move: T(mv.name), moveType: mv.type, cls: mv.cls, manual: !!manual };
   const record = () => { if (bt) bt.last = res; return res; };
   const ab = abilityOf(actor), tab = abilityOf(target);
   if (mv.cls === 'status' || !mv.dice) {

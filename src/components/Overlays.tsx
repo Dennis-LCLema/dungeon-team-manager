@@ -123,7 +123,7 @@ export function AttackPopup() {
     <div className={`hitpop-wrap ${slot ? 'inline' : ''}`} role="status" aria-live="assertive">
       <button className={`hitpop ${rolling ? 'rolling' : kind} ${p.actorSide}`} onClick={() => setUi({ popup: null })} aria-label={`${head} Tap to close`}>
         <div className="hp-who"><b>{p.actor}</b> used <b>{p.move}</b> <TypeChip t={p.moveType} /> on <b>{p.target}</b></div>
-        {p.d20 != null && !p.status ? <div className="hp-die"><Die value={p.d20} rolling={rolling} size={68} tone={rolling ? '' : p.crit && p.hit ? 'crit' : p.hit ? '' : 'bad'} /></div> : null}
+        {p.d20 != null && !p.status ? <div className="hp-die"><Die value={p.d20} rolling={rolling} size={68} ms={750} tone={rolling ? '' : p.crit && p.hit ? 'crit' : p.hit ? '' : 'bad'} /></div> : null}
         <div className="hp-head">{head}</div>
         {rolling ? null : <>
           {p.hit && !p.status && p.dmg ? <div className="hp-dmg mono">−{p.dmg} HP</div> : null}

@@ -298,13 +298,16 @@ fieldset[disabled] .filebtn{opacity:.45}
 .loading{display:grid;place-items:center;min-height:50vh;color:var(--muted);gap:10px}
 
 /* Battle stage: background slot + sprites */
-.stage{position:relative;height:clamp(190px,34vw,260px);border-radius:14px;margin-bottom:14px;overflow:hidden;border:1px solid var(--line);background-size:cover;background-position:center;display:flex;justify-content:space-between;align-items:flex-end;padding:12px}
+.stage{position:relative;min-height:clamp(190px,34vw,260px);border-radius:14px;margin-bottom:14px;overflow:hidden;border:1px solid var(--line);background-size:cover;background-position:center;display:flex;justify-content:space-between;align-items:flex-end;padding:12px}
 .stage::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.45));pointer-events:none}
-.stage .side{position:relative;z-index:1;display:flex;gap:10px;flex-wrap:wrap;max-width:50%}
+.stage .side{position:relative;z-index:1;display:grid;grid-template-columns:repeat(var(--cols,2),auto);gap:8px 6px;max-width:50%;align-content:start}
 .stage .foes{align-self:flex-start;justify-content:flex-end;order:2}
 .stage .team{order:1}
-.fig{display:flex;flex-direction:column;align-items:center;gap:3px;width:76px;color:#fff;font:700 11.5px var(--f-body);text-shadow:0 1px 3px #000}
-.fig .bar{width:64px;height:6px;background:rgba(0,0,0,.5)}
+.fig{display:flex;flex-direction:column;align-items:center;gap:3px;width:calc(var(--fs,60px) + 14px);padding:0;border:0;background:none;cursor:pointer;color:#fff;font:700 11.5px var(--f-body);text-shadow:0 1px 3px #000}
+.fig:disabled{cursor:default}
+.fig:focus-visible{outline:2px solid #fff;outline-offset:2px;border-radius:8px}
+.fig>span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig .bar{width:calc(var(--fs,60px) + 4px);height:6px;background:rgba(0,0,0,.5)}
 .fig.turn .avatar{box-shadow:0 0 0 3px var(--gold),0 0 16px var(--gold)}
 .fig.down{opacity:.35;filter:grayscale(1);transition:opacity .6s,filter .6s}
 .fig.lunge-r{animation:lungeR .45s .3s ease-out}
@@ -324,20 +327,16 @@ fieldset[disabled] .filebtn{opacity:.45}
 /* d20 that tumbles, then lands */
 .die20{position:relative;display:inline-grid;place-items:center;flex:none;font-weight:800;font-family:var(--f-display);color:var(--ink);line-height:1}
 .die20 svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.die20 polygon{fill:var(--chip);stroke:var(--muted);stroke-width:4;stroke-linejoin:round}
-.die20 path{fill:none;stroke:var(--muted);stroke-width:2;opacity:.5}
-.die20 b{position:relative}
-.die20.rolling{animation:dieroll .5s linear infinite}
+.die20 polygon{fill:#f4efe1;stroke:#2b2b35;stroke-width:4;stroke-linejoin:round}
+.die20 path{fill:none;stroke:#2b2b35;stroke-width:2;opacity:.35}
+.die20 b{position:relative;color:#1d1d26}
+.die20.rolling{animation:diethrow var(--ms,900ms) linear var(--dl,0ms) both}
 .die20.rolling b{opacity:.8}
-@keyframes dieroll{0%{transform:translateY(0) rotate(0)}25%{transform:translateY(-22%) rotate(100deg)}50%{transform:translateY(0) rotate(190deg)}75%{transform:translateY(-12%) rotate(280deg)}100%{transform:translateY(0) rotate(360deg)}}
 .die20.landed{animation:dieland .45s cubic-bezier(.2,1.6,.4,1)}
 @keyframes dieland{0%{transform:scale(1.55) rotate(-25deg)}100%{transform:none}}
-.die20.landed polygon{fill:var(--accent);stroke:var(--accent)}
-.die20.landed path{stroke:#fff}
-.die20.landed b{color:#fff}
 .die20.crit polygon{fill:var(--gold);stroke:var(--gold)}
 .die20.crit b{color:var(--gold-ink)}
-.die20.bad polygon{fill:var(--muted);stroke:var(--muted)}
+.die20.bad polygon{fill:#c9c2b4;stroke:var(--bad)}
 .hitpop .hp-die{margin:10px 0 2px}
 .hitpop.rolling .hp-head{color:var(--muted);font-size:20px}
 .nodefx{display:table;margin-top:4px;padding:1px 7px;border-radius:99px;font-weight:700;background:color-mix(in srgb,var(--good) 18%,var(--card));color:var(--good)!important}
@@ -405,3 +404,32 @@ body:not(.tips) .tip{display:none}
 .dicegrid .btn{padding:8px 0;font-family:var(--f-mono)}
 .diceresult{display:flex;align-items:center;gap:10px;margin-top:10px}
 main{padding-bottom:84px}
+
+/* A thrown die: flies in from --fx/--fy, bounces twice and settles. Bounce heights are in em, so they scale with the die. */
+@keyframes diethrow{
+  0%{opacity:0;transform:translate(var(--fx,-150px),var(--fy,-70px)) rotate(-720deg) scale(.7)}
+  8%{opacity:1}
+  40%{transform:translate(calc(var(--fx,-150px)*.3),0) rotate(-300deg) scale(1.05);animation-timing-function:ease-out}
+  55%{transform:translate(calc(var(--fx,-150px)*.17),-1.1em) rotate(-190deg);animation-timing-function:ease-in}
+  70%{transform:translate(calc(var(--fx,-150px)*.08),0) rotate(-90deg);animation-timing-function:ease-out}
+  82%{transform:translate(calc(var(--fx,-150px)*.03),-.45em) rotate(-35deg);animation-timing-function:ease-in}
+  92%{transform:translate(0,0) rotate(-8deg)}
+  100%{opacity:1;transform:none}
+}
+.dicetray{position:fixed;inset:0;z-index:80;display:grid;place-content:center;justify-items:center;gap:14px;pointer-events:none;background:radial-gradient(circle at center,rgba(0,0,0,.45),transparent 60%)}
+.dicetray .die20{filter:drop-shadow(0 10px 14px rgba(0,0,0,.5))}
+.dicetray-t{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-family:var(--f-mono);animation:pop .25s}
+
+/* Battle scene: tap a Pokémon to target it; taller for bigger fights */
+/* Foes in a row across the top, the team in a row along the bottom: six a side fit on a phone. */
+.stage{flex-direction:column;align-items:stretch;gap:20px}
+.stage .side{display:flex;flex-wrap:wrap;gap:8px 4px;max-width:100%}
+.stage .foes{order:1;align-self:flex-end;justify-content:flex-end}
+.stage .team{order:2;align-self:flex-start}
+.stage.n4{min-height:clamp(230px,40vw,300px)}
+.stage.n6{min-height:clamp(230px,40vw,300px)}
+.stage.n6 .fig{width:calc(var(--fs,44px) + 5px);font-size:10px}
+.stage.n6 .fig .bar{width:var(--fs,44px)}
+.fig.sel .avatar{box-shadow:0 0 0 3px #fff,0 0 14px 2px #fff}
+.fig .aim{position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-style:normal;font-size:13px;color:#fff;text-shadow:0 1px 3px #000;animation:bob 1s ease-in-out infinite}
+.mv-t{font-size:11.5px;font-weight:600;color:var(--ink);opacity:.85}

@@ -11,6 +11,7 @@ import {
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
 import { T, setPath, slug, toID, fmt, readImage, roll } from '../lib/util';
+import { traitLabels } from '../game/battle';
 
 const DM_FIELD = /^(shiny|player|evoChoice|evoLevel|bonus\.|heart|types\.|awakenedType|base\.|abilitiesText|nickname|tree\..*\.(label|name|desc)$)/;
 
@@ -294,6 +295,7 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
           <button className="btn sm ghost" disabled={mv.ppCur >= mv.ppMax} aria-label="Add 1 PP" onClick={() => onMove(m => { if (m.ppCur < (m.ppMax || 0)) m.ppCur++; })}>+1</button>
         </div>
       )) : <div className="small muted">{mv.ppMax == null ? 'At-will' : mv.ppMax + ' PP per long rest'}</div>}
+      {traitLabels(mv).length ? <div className="small" style={{ marginTop: 4, fontWeight: 600 }}>{traitLabels(mv).join(' · ')}</div> : null}
       {mv.desc ? <div className="small muted" style={{ marginTop: 4 }}>{mv.desc}</div> : null}
     </div>
   );

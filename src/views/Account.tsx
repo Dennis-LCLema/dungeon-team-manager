@@ -39,6 +39,7 @@ const HOUSE_RULES = [
   'Difficulty (DM tools) scales enemy HP and damage. Monster House Pokémon are minions with half HP.',
   "A fainted hero can be helped up by an ally's turn, and wakes up with 1 HP after the team wins.",
   'Physical moves use Attack vs Guard. Special moves use Sp. Atk vs Sp. Guard.',
+  'Moves play differently, read from each move’s own text. “Goes first” moves (Quick Attack, Mach Punch) are a bonus action for heroes: a smaller hit (1d4 for the weakest) with no ability modifier, once a turn, and the turn carries on. “High critical hit ratio” crits on 19–20. “Does not check accuracy” only misses on a natural 1. Multi-hit moves add 1d4 per extra hit. Recoil and drain take or give back a share of the damage. A flinch gives the target disadvantage on its next attack. Stat changes on a hit apply themselves. Hyper Beam and the like cost the next turn.',
   'Move power → dice: ≤40 1d8, ≤60 2d6, ≤80 2d8, ≤100 3d8, ≤120 4d8, higher 5d8.',
   'Weak, high-PP moves are at-will. Others get 1–6 PP per long rest.',
   'Super effective = double damage, not very effective = half, immune = none.',

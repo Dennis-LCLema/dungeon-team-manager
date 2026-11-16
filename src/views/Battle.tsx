@@ -3,10 +3,10 @@ import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { Die, stillMotion } from '../components/Dice';
 import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { STAGE_NAME, STUNTS, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, STUNTS, moveTraits, quickDice, traitLabels, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, abilityFxText, lootTeam, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
-import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame } from '../game/store';
+import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame, useUi } from '../game/store';
 import type { Battle, Char, Enemy, FieldFx, Fighter, Move, OrderEntry, Shared, Status } from '../game/types';
 import { T, fmt, roll, slug, uid } from '../lib/util';
 
@@ -127,8 +127,8 @@ function InitRoll({ o, delay }: { o: OrderEntry; delay: number }) {
   }, [wait]);
   return (
     <span className="mono small initroll">
-      <Die value={o.r1} rolling={rolling} size={36} />
-      {o.r2 != null ? <Die value={o.r2} rolling={rolling} size={36} /> : null}
+      <Die value={o.r1} rolling={rolling} size={38} ms={1000} delay={wait} />
+      {o.r2 != null ? <Die value={o.r2} rolling={rolling} size={38} ms={1000} delay={wait + 90} /> : null}
       {rolling ? null : <span>{o.mod != null ? fmt(o.mod) : ''} = <b>{o.init}</b></span>}
     </span>
   );
@@ -187,7 +187,7 @@ function TurnPanel({ b }: { b: Battle }) {
   const foes = b.order.filter(o => sideOf(o) !== mySide && !isOut(bGet(o)));
   const allies = b.order.filter(o => sideOf(o) === mySide && !isOut(bGet(o)));
   const tgtList = [...foes, ...allies];
-  const [pick, setPick] = useState('');
+  const pick = useUi().target, setPick = (id: string) => setUi({ target: id });
   const [itemSel, setItemSel] = useState(0);
   const [assistSel, setAssistSel] = useState(0);
   const rules = useGame().rules, realDice = !!rules.ownDice;
@@ -215,14 +215,18 @@ function TurnPanel({ b }: { b: Battle }) {
   const target = (s: Shared) => { const o = s.game.battle!.order.find(x => x.id === tgtId); return o ? bGet(o) : null; };
 
   // Only the DM can type in dice a player rolled by hand, so hits and crits can't be made up.
-  const fire = (i: number, typed?: { d20: number; dmg?: number }) => onTurn((_bb, c0, a) => {
+  const fire = (i: number, typed?: { d20: number; dmg?: number }) => onTurn((_bb, c0, a, s0) => {
     const manual = isDM() ? typed : undefined;
     const mv = (c0.ref === 'pc' ? equippedOf(a as Char) : a.moves)[i], t = target(G());
     if (!mv) return;
     if (!t) { toast('No target.', 'bad'); return; }
     // Out of PP (the button is off, but two taps or a stale screen can still get here): keep the turn.
-    if (!resolveMove(a, mv, t, manual)) { toast(`${T(mv.name)} is out of PP. Pick another move.`, 'bad'); return; }
+    // A quick move (Quick Attack, Mach Punch…) is a hero's bonus action: one a turn, and the turn carries on after it.
+    const bonus = c0.ref === 'pc' && !!moveTraits(mv).quick;
+    if (bonus && s0.game.battle?.flags?.[a.id]?.quickUsed) { toast('One bonus-action move per turn.', 'bad'); return; }
+    if (!resolveMove(a, mv, t, manual, bonus)) { toast(`${T(mv.name)} is out of PP. Pick another move.`, 'bad'); return; }
     checkEnd();
+    if (bonus) { setOwnMove(null); return; }
     nextTurn();
   });
   const noPunch = isPc && !moves.some(m => m.dice && m.cls !== 'status' && (m.ppMax == null || m.ppCur > 0));
@@ -244,7 +248,10 @@ function TurnPanel({ b }: { b: Battle }) {
   };
   // Preview of a player's own d20: same math the engine uses.
   const omIdx = ownMove ?? (dm && b.ask ? b.ask.move : null), om = omIdx != null ? moves[omIdx] : null, d20 = Math.round(+ownD20);
-  const dropAsk = () => { setOwnMove(null); if (b.ask) update(d => { delete d.game.battle?.ask; }); };
+  const dropAsk = () => { setOwnMove(null); if (b.ask) update(d => { if (d.game.battle?.ask) { if (!isDM()) blog(`${nameOf(actor)} changed their mind before rolling.`); delete d.game.battle.ask; } }); };
+  // What the dice are for this move right now: a quick move thrown in as a bonus action uses its smaller dice.
+  const diceOf = (m: Move) => (isPc && moveTraits(m).quick ? quickDice(m) : m.dice);
+  const quickUsed = !!b.flags?.[actor.id]?.quickUsed;
   const ownCheck = om && tgt && d20 >= 1 && d20 <= 20 ? (() => {
     const { bonus, def, defName } = toHit(actor, om, tgt), crit = d20 >= critOn(actor);
     return { bonus, def, defName, crit, total: d20 + bonus, hit: d20 !== 1 && (crit || d20 + bonus >= def) };
@@ -277,7 +284,7 @@ function TurnPanel({ b }: { b: Battle }) {
     if (dm) { setOwnMove(-1); setOwnD20(''); }
     else onTurn((bb, _c, a) => { bb.ask = { move: -1, target: tgtId || '' }; blog(`${nameOf(a)} reaches out to ${nameOf(tgt)} and rolls real dice.`); });
   };
-  const heartBonus = prof(actor.level) + M(actor, 'heart');
+  const heartBonus = prof(actor.level) + M(actor, 'heart'), askMv = b.ask && b.ask.move >= 0 ? moves[b.ask.move] : null;
   // Stunts: the player says what they do, the DM says how hard it is, then the dice decide.
   const [stuntOpen, setStuntOpen] = useState(false);
   const [stuntText, setStuntText] = useState('');
@@ -343,8 +350,8 @@ function TurnPanel({ b }: { b: Battle }) {
           ) : <div className="small" style={{ marginTop: 4 }}>{own ? 'Roll your real d20 and tell Dennis. He decides how hard it is.' : 'Waiting for Dennis to say how hard it is.'}</div>}
         </div>
       ) : null}
-      <label style={{ margin: '10px 0' }}>1. Pick a target
-        <select value={tgtId} onChange={e => setPick(e.target.value)}>
+      <label style={{ margin: '10px 0' }}>1. Pick a target <span className="small muted">(or tap one in the scene above)</span>
+        <select value={tgtId} onChange={e => setPick(e.target.value)} title="You can also tap a Pokémon in the battle scene.">
           {tgtList.map(o => { const x = bGet(o)!; return <option key={o.id} value={o.id}>{sideOf(o) === mySide ? 'Ally: ' : ''}{nameOf(x)} ({x.hpCur}/{hpMaxOf(x)} HP)</option>; })}
         </select>
       </label>
@@ -357,16 +364,21 @@ function TurnPanel({ b }: { b: Battle }) {
           </label>
         ) : isPc && owns(hero) ? (
           <label className="row" style={{ flexDirection: 'row', fontSize: 13, color: 'var(--ink)' }} title="Choose before you pick a move. Once the app has rolled, that roll stands.">
-            <input type="checkbox" checked={own} disabled={realDice || !!b.ask} onChange={e => { const on = e.target.checked; update(d => { (d.rules.dice ||= {})[diceKey] = on; }); }} /> I'll roll my own dice
+            <input type="checkbox" checked={own} disabled={realDice} onChange={e => { const on = e.target.checked; update(d => { (d.rules.dice ||= {})[diceKey] = on; if (!on && d.game.battle?.ask) { blog(`${nameOf(actor)} switched back to the app's dice.`); delete d.game.battle.ask; } }); }} /> I'll roll my own dice
           </label>
         ) : null}
       </div>
       {b.ask && !dm ? (
         <div className="banner">
-          <b>🎲 Roll your real dice!</b> {b.ask.move === -1
-            ? <>A d20 for your Heart check{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number.</>
-            : <>A d20 for <b>{T(moves[b.ask.move]?.name || 'your move')}</b>{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}, then tell Dennis the number. If it hits, roll {moves[b.ask.move]?.dice} for damage too.</>}
-          <div className="small muted" style={{ marginTop: 4 }}>The choice is locked in once you roll. Picked the wrong thing? Ask Dennis to cancel it.</div>
+          <b>🎲 Roll your dice!</b> {b.ask.move === -1 ? <>Heart check{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}.</> : <><b>{T(askMv?.name || 'Your move')}</b>{tgt ? <> on <b>{nameOf(tgt)}</b></> : null}.</>}
+          <ol className="small" style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+            <li>Roll a <b>d20</b> and tell Dennis the number on the die.</li>
+            {b.ask.move === -1 ? <li>The app adds your <b>{fmt(heartBonus)}</b>. You need 12 or more.</li> : <>
+              <li>The app adds your <b>{askMv && tgt ? fmt(toHit(actor, askMv, tgt).bonus) : '+0'}</b> to hit and shows hit or miss.</li>
+              <li>If it hits, roll <b>{askMv ? diceOf(askMv) : ''}</b> for damage and tell Dennis the total. The app adds your bonuses.</li>
+            </>}
+          </ol>
+          <div className="row" style={{ marginTop: 8 }}><button className="btn sm" onClick={dropAsk}>Pick something else</button></div>
         </div>
       ) : null}
       {own && omIdx === -1 && dm ? (
@@ -387,7 +399,7 @@ function TurnPanel({ b }: { b: Battle }) {
           <b>{T(om.name)}</b> on <b>{tgt ? nameOf(tgt) : '?'}</b>
           <div className="row" style={{ marginTop: 8, alignItems: 'flex-end' }}>
             <label style={{ width: 130 }}>Their d20 roll<input type="number" min={1} max={20} autoFocus value={ownD20} onChange={e => setOwnD20(e.target.value)} /></label>
-            {ownCheck?.hit ? <label style={{ flex: 1, minWidth: 160 }}>Their damage roll ({om.dice}{ownCheck.crit ? ', roll it twice for the crit' : ''})<input type="number" min={0} value={ownDmg} onChange={e => setOwnDmg(e.target.value)} /></label> : null}
+            {ownCheck?.hit ? <label style={{ flex: 1, minWidth: 160 }}>Their damage roll ({diceOf(om)}{ownCheck.crit ? ', roll it twice for the crit' : ''})<input type="number" min={0} value={ownDmg} onChange={e => setOwnDmg(e.target.value)} /></label> : null}
           </div>
           {ownCheck ? (
             <p className="small" style={{ margin: '8px 0' }}>
@@ -403,12 +415,13 @@ function TurnPanel({ b }: { b: Battle }) {
       ) : null}
       <div className="movegrid">
         {moves.length ? moves.map((m, i) => {
-          const out = m.ppMax != null && m.ppCur <= 0;
+          const out = m.ppMax != null && m.ppCur <= 0, traits = traitLabels(m), spent = isPc && !!moveTraits(m).quick && quickUsed;
           return (
-            <button key={m.name} className="mv" style={{ '--tc': TCOL[m.type] || '#888' } as React.CSSProperties} disabled={out} onClick={() => pickMove(i)}>
+            <button key={m.name} className="mv" style={{ '--tc': TCOL[m.type] || '#888' } as React.CSSProperties} disabled={out || spent} title={m.desc} onClick={() => pickMove(i)}>
               <span className="mv-n">{T(m.name)}</span>
-              <span className="mv-m"><TypeChip t={m.type} /><span className="mono">{m.dice || 'status'}</span><span className="mono">{m.ppMax == null ? '∞' : `${m.ppCur}/${m.ppMax} PP`}</span></span>
-              {out ? <span className="eff none">Out of PP</span> : effTag(m)}
+              <span className="mv-m"><TypeChip t={m.type} /><span className="mono">{m.dice ? diceOf(m) : 'status'}</span><span className="mono">{m.ppMax == null ? '∞' : `${m.ppCur}/${m.ppMax} PP`}</span></span>
+              {traits.length ? <span className="mv-t">{traits.join(' · ')}</span> : null}
+              {out ? <span className="eff none">Out of PP</span> : spent ? <span className="eff none">Used this turn</span> : effTag(m)}
             </button>
           );
         }) : <p className="small muted">No moves equipped.</p>}
@@ -573,6 +586,10 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
 /** Battle scene: the background slot, both sides' sprites, and a lunge/shake for the latest move. */
 function Stage({ b }: { b: Battle }) {
   const last = b.last, attack = !!last && !last.status, phys = last?.cls === 'physical', landed = attack && !!last!.hit && !!last!.dmg, tc = { '--tc': (last && TCOL[last.moveType]) || '#fff' } as React.CSSProperties;
+  const picked = useUi().target, idx = b.order.map((o, k) => [o, k] as const);
+  const team = idx.filter(([o]) => sideOf(o) === 'team'), foes = idx.filter(([o]) => sideOf(o) === 'enemy');
+  // Bigger sides get smaller sprites in more columns, so 4 v 4 and 6 v 6 both fit on a phone.
+  const most = Math.max(team.length, foes.length), size = most <= 2 ? 60 : most <= 4 ? 52 : 44;
   const fig = (o: OrderEntry, k: number) => {
     const x = bGet(o);
     if (!x) return null;
@@ -583,24 +600,27 @@ function Stage({ b }: { b: Battle }) {
       : isTarget ? (!attack ? 'buff' : !last.hit ? 'dodge' : last.dmg ? 'shake' : '') : isActor ? 'buff' : '';
     const float = !last || !isTarget ? '' : last.heal ? `+${last.heal}`
       : !attack ? '' : last.hit ? (last.dmg ? `−${last.dmg}` : 'No effect') : last.d20 == null ? 'Blocked' : 'Miss';
+    const sel = picked === o.id && !isOut(x) && !b.result;
     return (
-      <div key={o.id + (anim || float ? last!.id : '')} style={tc} className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${isTarget && attack && last!.ko ? 'ko' : ''} ${k === b.turn && !b.result ? 'turn' : ''}`}>
+      <button type="button" key={o.id + (anim || float ? last!.id : '')} style={tc} disabled={isOut(x) || !!b.result} aria-pressed={sel} aria-label={`Target ${n}, ${x.hpCur} of ${hpMaxOf(x)} HP`}
+        className={`fig ${anim} ${isOut(x) ? 'down' : ''} ${isTarget && attack && last!.ko ? 'ko' : ''} ${k === b.turn && !b.result ? 'turn' : ''} ${sel ? 'sel' : ''}`}
+        onClick={() => setUi({ target: o.id })}>
+        {sel ? <i className="aim" aria-hidden="true">▼</i> : null}
         {float ? <i className={`float ${last!.heal ? 'heal' : !last!.hit ? 'miss' : last!.crit ? 'crit' : 'dmg'}`}>{float}</i> : null}
         {isTarget && landed ? <><i className="burst" /><i className="ring" />{phys ? <i className="slash" /> : null}</> : null}
-        <Avatar c={x} size={60} />
+        <Avatar c={x} size={size} />
         <span>{x.status ? STATUS[x.status].g + ' ' : ''}{n}</span>
         <HpBar cur={x.hpCur} max={hpMaxOf(x)} />
-      </div>
+      </button>
     );
   };
-  const idx = b.order.map((o, k) => [o, k] as const);
   // The side that takes a hit shakes; harder for a crit or a knockout.
   const quake = (from: string) => (landed && last!.actorSide === from ? last!.id : ''), big = landed && (!!last!.crit || !!last!.ko);
   return (
-    <div className="stage" aria-hidden="true"
-      style={{ backgroundImage: `url(backgrounds/${b.bg || 'battle'}.webp), url(backgrounds/battle.webp), ${sceneUrl(b.scene ?? 0)}` }}>
-      <div key={'team' + quake('enemy')} className={`side team ${quake('enemy') ? 'quake' : ''} ${big ? 'big' : ''}`}>{idx.filter(([o]) => sideOf(o) === 'team').map(([o, k]) => fig(o, k))}</div>
-      <div key={'foes' + quake('team')} className={`side foes ${quake('team') ? 'quake' : ''} ${big ? 'big' : ''}`}>{idx.filter(([o]) => sideOf(o) === 'enemy').map(([o, k]) => fig(o, k))}</div>
+    <div className={`stage n${most <= 2 ? 2 : most <= 4 ? 4 : 6}`} aria-label="Battle scene. Tap a Pokémon to target it."
+      style={{ '--fs': size + 'px', backgroundImage: `url(backgrounds/${b.bg || 'battle'}.webp), url(backgrounds/battle.webp), ${sceneUrl(b.scene ?? 0)}` } as React.CSSProperties}>
+      <div key={'team' + quake('enemy')} className={`side team ${quake('enemy') ? 'quake' : ''} ${big ? 'big' : ''}`}>{team.map(([o, k]) => fig(o, k))}</div>
+      <div key={'foes' + quake('team')} className={`side foes ${quake('team') ? 'quake' : ''} ${big ? 'big' : ''}`}>{foes.map(([o, k]) => fig(o, k))}</div>
       {/* Special moves fly across with a trail; physical moves land as a slash on the target instead. */}
       {attack && last!.d20 != null && !phys ? ['', 't1', 't2'].map(t => <i key={last!.id + t} style={tc} className={`zap ${t} ${last!.actorSide === 'team' ? 'to-r' : 'to-l'}`} />) : null}
       {attack && last!.hit && last!.crit ? <i key={'crit' + last!.id} className="critflash" /> : null}

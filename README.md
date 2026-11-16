@@ -28,6 +28,8 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🌫️ **Creative moments**: turn a clever idea (Fire on Water makes a Steam Fog) into a field effect for a few rounds
 - 🔥 **Status conditions**: burn, poison, paralysis, sleep, freeze and confusion run automatically each turn
 - 🎲 **Everything rolls itself**: every status move (stat changes, heals, Protect, cures and the rest), status chances on attacks (Ember's burn), saves and assists need no bookkeeping
+- 🥋 **Moves that play differently**: Quick Attack is a bonus action, Slash crits on 19–20, Swift never misses, Fury Swipes hits 2–5 times, Take Down has recoil, Absorb drains, Bite can flinch, Hyper Beam costs a turn. All read from each move's own text
+- 👆 **Tap to target**: tap a Pokémon in the battle scene, which fits six a side on a phone
 - 🎬 **Battle scene**: a d20 tumbles and lands for every roll, attacks fly across the scene, damage numbers float up, and built-in sound effects play (🔔 in the top bar turns them off)
 - 🎯 **Real dice, if a player wants them**: a player ticks "I'll roll my own dice" before picking a move (or the DM turns it on for everyone), rolls at the table, and the DM types the numbers in. Works for attacks, Purify and ability checks
 - 👥 **A travelling team of 6**: a player can run several Pokémon, each on its own turn. Extras wait in the Safe Zone and are swapped in there

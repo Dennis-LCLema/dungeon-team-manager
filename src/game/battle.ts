@@ -167,6 +167,14 @@ export function nextTurn(depth = 0) {
   const x = bGet(b.order[b.turn]), f = heldFx(x);
   if (x && b.flags?.[x.id]?.protect) b.flags[x.id].protect = false; // Protect lasts until its user's next turn
   if (x && b.flags?.[x.id]?.stunted) b.flags[x.id].stunted = false; // one stunt per turn
+  if (x && b.flags?.[x.id]?.quickUsed) b.flags[x.id].quickUsed = false; // one bonus-action move per turn
+  // Hyper Beam and the like: the user sits out its next turn.
+  if (x && !isOut(x) && b.flags?.[x.id]?.recharge) {
+    b.flags[x.id].recharge = false;
+    blog(`${nameOf(x)} must recharge and loses this turn.`);
+    if (depth < b.order.length * 2) nextTurn(depth + 1);
+    return;
+  }
   if (x && !isOut(x) && f.regen && x.hpCur < hpMaxOf(x)) {
     x.hpCur = Math.min(hpMaxOf(x), x.hpCur + f.regen);
     blog(`${nameOf(x)} restored a little HP with its Leftovers.`);
@@ -262,7 +270,7 @@ export function toHit(actor: Fighter, mv: Move, target: Fighter) {
 
 /** Resolve one move and record the result on the battle so every screen can show the hit/miss popup.
     `manual` holds a player's own dice: the d20 they rolled, and their damage dice total if it hits. */
-export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: { d20: number; dmg?: number }): AttackResult | null {
+export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: { d20: number; dmg?: number }, bonus?: boolean): AttackResult | null {
   const who = nameOf(actor), tn = nameOf(target), bt = BT();
   if (mv.ppMax != null) { if (mv.ppCur <= 0) return null; mv.ppCur--; }
   const aTeam = onTeam(actor), fld = fieldFor(bt, aTeam);
@@ -301,8 +309,9 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
     blog(`${who} used ${T(mv.name)} on ${tn}, but ${tn} protected itself!`);
     return record();
   }
-  const key = mv.cls === 'physical' ? 'atk' : 'spa';
-  const { bonus, def, defName } = toHit(actor, mv, target);
+  const key = mv.cls === 'physical' ? 'atk' : 'spa', tr = moveTraits(mv), asBonus = !!bonus && !!tr.quick;
+  if (asBonus) flag(actor.id).quickUsed = true;
+  const { bonus: hitBonus, def, defName } = toHit(actor, mv, target);
   if (ab === 'steadfast') flag(actor.id).steady = false;
   const surpriseAdv = !!bt && bt.round === 1 && ((bt.surprise === 'ambush' && !aTeam) || (bt.surprise === 'jump' && aTeam));
   // Advantage and disadvantage cancel out, as in tabletop rules.
@@ -312,20 +321,27 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   const insp = !manual && actor.kind !== 'enemy' && !!actor.inspired; // earned by staying in character
   if (insp) (actor as Char).inspired = false;
   const up = surpriseAdv || fld.adv || pow || edge || insp, down = fld.dis || off, adv = !manual && up && !down, dis = !manual && down && !up;
-  const d20 = manual ? manual.d20 : adv ? Math.max(roll(20), roll(20)) : dis ? Math.min(roll(20), roll(20)) : roll(20), total = d20 + bonus;
-  const crit = d20 >= critOn(actor);
-  Object.assign(res, { d20, bonus, total, def, defName, adv, dis, crit, fx: fld.names.join(', ') || undefined });
+  const d20 = manual ? manual.d20 : adv ? Math.max(roll(20), roll(20)) : dis ? Math.min(roll(20), roll(20)) : roll(20), total = d20 + hitBonus, bonusTxt = fmt(hitBonus);
+  const crit = d20 >= critOn(actor) - (tr.crit19 ? 1 : 0) || (!!tr.sureCrit && d20 !== 1);
+  Object.assign(res, { d20, bonus: hitBonus, total, def, defName, adv, dis, crit, fx: fld.names.join(', ') || undefined });
   const tag = manual ? ' (own dice)' : '';
-  if (d20 === 1 || (!crit && total < def)) {
+  if (d20 === 1 || (!crit && !tr.sure && total < def)) {
     res.hit = false;
+    res.crit = false;
     res.fumble = d20 === 1;
-    blog(`${who} used ${T(mv.name)} on ${tn}: rolled ${d20}${fmt(bonus)} = ${total} vs ${def}${tag}. Miss!`);
+    blog(`${who} used ${T(mv.name)} on ${tn}: rolled ${d20}${bonusTxt} = ${total} vs ${def}${tag}. Miss!`);
     return record();
   }
   let extra = '';
   const stab = typesOf(actor).includes(mv.type);
-  const dice = manual?.dmg != null ? manual.dmg : rollDice(mv.dice, crit);
-  let dmg = dice + M(actor, key) + (stab ? prof(actor.level) : 0) + heldDmg(actor, mv);
+  const dice = manual?.dmg != null ? manual.dmg : rollDice(asBonus ? quickDice(mv) : mv.dice, crit);
+  // A quick move thrown in as a bonus action is a jab: its smaller dice, with no ability modifier or same-type bonus.
+  let dmg = dice + (asBonus ? 0 : M(actor, key) + (stab ? prof(actor.level) : 0)) + heldDmg(actor, mv);
+  if (tr.hits) {
+    const n = tr.hits[0] === tr.hits[1] ? tr.hits[0] : [2, 2, 2, 3, 3, 3, 4, 5][roll(8) - 1], more = rollDice(`${n - 1}d4`);
+    dmg += more;
+    extra += ` Hit ${n} times (+${more}).`;
+  }
   if (ab === 'rock-head' && mv.cls === 'physical') dmg += 2;
   dmg += fld.dmg + stageOf(actor, key) + treeFx(actor, 'dmg');
   if (pow) { const pb = rollDice(wild ? '2d6' : '1d6'); dmg += pb; extra += ` +${pb} bonus damage.`; }
@@ -346,10 +362,17 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   // The move's own status chance (Ember 10% burn), rolled here so nobody has to remember it.
   const side = dmg > 0 && target.hpCur > 0 && !target.status ? sideStatus(mv.desc) : null;
   if (side && roll(100) <= side.pct) { setStatus(target, side.st); if (target.status === side.st) extra += ` ${tn} is ${STATUS[side.st].n.toLowerCase()}! ${STATUS[side.st].g}`; }
+  if (dmg > 0) {
+    if (tr.drain && actor.hpCur > 0) { const heal = Math.min(hpMaxOf(actor) - actor.hpCur, Math.max(1, Math.floor(dmg * tr.drain))); if (heal > 0) { actor.hpCur += heal; extra += ` ${who} drained ${heal} HP.`; } }
+    if (tr.recoil && ab !== 'rock-head') { const rc = Math.max(1, Math.floor(dmg * tr.recoil)); actor.hpCur = Math.max(0, actor.hpCur - rc); extra += ` ${who} took ${rc} recoil.`; }
+    if (tr.flinch && target.hpCur > 0 && roll(100) <= tr.flinch) { flag(target.id).off = true; extra += ` ${tn} flinched: disadvantage on its next attack.`; }
+    if (tr.stat && bt && roll(100) <= tr.stat.pct) { const x = tr.stat.who === 'self' ? actor : target; if (x.hpCur > 0) extra += ' ' + shiftStages(x, tr.stat); }
+    if (tr.recharge) { flag(actor.id).recharge = true; extra += ` ${who} must recharge next turn.`; }
+  }
   if (heldFx(actor).lifeOrb && dmg > 0 && ab !== 'rock-head') { const rc = roll(4); actor.hpCur = Math.max(0, actor.hpCur - rc); extra += ` ${who} took ${rc} Life Orb recoil.`; }
   if (tab === 'flame-body' && mv.cls === 'physical' && dmg > 0) { const fb = roll(4); actor.hpCur = Math.max(0, actor.hpCur - fb); extra += ` ${tn}'s Flame Body burns ${who} for ${fb}.`; }
   const effTxt = eff === 0 ? " It doesn't affect them." : eff > 1 ? " It's super effective!" : eff < 1 ? " It's not very effective." : '';
-  blog(`${who} used ${T(mv.name)} on ${tn}: ${d20}${fmt(bonus)} = ${total} vs ${def}${adv ? ' (advantage)' : dis ? ' (disadvantage)' : ''}${fld.names.length ? ' [' + fld.names.join(', ') + ']' : ''}${tag}.${crit ? ' Critical hit!' : ''} ${dmg} damage.${effTxt}${extra}`);
+  blog(`${who} used ${T(mv.name)}${asBonus ? ' as a bonus action' : ''} on ${tn}: ${d20}${bonusTxt} = ${total} vs ${def}${adv ? ' (advantage)' : dis ? ' (disadvantage)' : ''}${fld.names.length ? ' [' + fld.names.join(', ') + ']' : ''}${tag}.${crit ? ' Critical hit!' : ''} ${dmg} damage.${effTxt}${extra}`);
   Object.assign(res, { hit: true, dmg, eff, extra: extra.trim() });
   knockout(target, actor);
   if (target.kind === 'enemy' && target.outReason === '✨ Purified') res.extra = `${res.extra || ''} ✨ ${tn} was purified${actor.kind !== 'enemy' ? ` and joins ${who} as an Assist` : ''}!`.trim();
@@ -378,18 +401,77 @@ export function sideStatus(desc: string | undefined): { pct: number; st: Status 
 /** Names for stat changes. Speed counts as Dodge at half strength, since turn order is fixed once a fight starts. */
 export const STAGE_NAME: Record<string, string> = { atk: 'Attack', def: 'Guard', spa: 'Sp. Atk', spd: 'Sp. Guard', spe: 'Speed', acc: 'Aim', eva: 'Dodge' };
 const STAGE_WORDS: [RegExp, string][] = [[/Sp\. ?Atk/, 'spa'], [/Sp\. ?Def/, 'spd'], [/Attack|Atk/, 'atk'], [/Defense|Def/, 'def'], [/Speed/, 'spe'], [/accuracy/, 'acc'], [/evasi/, 'eva']];
+/** The stats named in a piece of move text, e.g. "the user's Attack and Sp. Def" gives ['spd', 'atk']. */
+function stageKeys(text: string) {
+  if (/all stats/i.test(text)) return ['atk', 'def', 'spa', 'spd', 'spe'];
+  let rest = text;
+  const stats: string[] = [];
+  STAGE_WORDS.forEach(([re, k]) => { if (re.test(rest)) { stats.push(k); rest = rest.replace(re, ''); } });
+  return stats;
+}
+
+/* ---------- What makes one damaging move play differently from another ----------
+   Read from the move's Pokédex text, so every move gets its traits without a hand-written table, and a custom move
+   written the same way gets them too. Tackle ("No additional effect.") is the plain baseline. */
+export interface MoveTraits {
+  /** "Usually goes first": a bonus action for heroes, as in Pokémon 5e. A smaller hit that doesn't use the turn, once per turn. */
+  quick?: boolean;
+  crit19?: boolean; sureCrit?: boolean; /** Hits unless the d20 is a natural 1. */ sure?: boolean;
+  /** Fewest and most hits. Each hit after the first adds 1d4. */ hits?: [number, number];
+  /** Share of the damage dealt that the user takes, or heals. */ recoil?: number; drain?: number;
+  /** % chance the target flinches: disadvantage on its next attack. */ flinch?: number;
+  /** The user loses its next turn. */ recharge?: boolean;
+  stat?: { pct: number; who: 'self' | 'target'; by: number; stats: string[] };
+}
+const RECOIL: Record<string, number> = { '33%': 1 / 3, '1/3': 1 / 3, '1/4': 0.25, '1/2': 0.5, '50%': 0.5 };
+export function moveTraits(mv: Pick<Move, 'desc' | 'cls' | 'dice'>): MoveTraits {
+  const d = mv.desc || '', t: MoveTraits = {};
+  if (mv.cls === 'status' || !mv.dice) return t;
+  if (/goes first/i.test(d)) t.quick = true;
+  if (/High critical hit ratio/i.test(d)) t.crit19 = true;
+  if (/Always results in a critical hit/i.test(d)) t.sureCrit = true;
+  if (/does not check accuracy|no accuracy check/i.test(d)) t.sure = true;
+  const hits = /Hits (2-5|twice|2|3|two|three)( times)?/i.exec(d);
+  if (hits) t.hits = hits[1] === '2-5' ? [2, 5] : /3|three/i.test(hits[1]) ? [3, 3] : [2, 2];
+  const rc = /Has (33%|1\/3|1\/4|1\/2|50%) recoil/i.exec(d);
+  if (rc) t.recoil = RECOIL[rc[1]];
+  const dr = /recovers (\d+)% of the damage/i.exec(d);
+  if (dr) t.drain = +dr[1] / 100;
+  const fl = /(\d+)% chance to (?:make the target )?flinch/i.exec(d);
+  if (fl) t.flinch = +fl[1];
+  if (/cannot move next turn/i.test(d)) t.recharge = true;
+  const chance = /(\d+)% chance to (lower|raise) (.+?) by (\d)/i.exec(d), after = /^(Lowers|Raises) the user's (.+?) by (\d)/i.exec(d);
+  if (chance && stageKeys(chance[3]).length) t.stat = { pct: +chance[1], who: /user|all stats/i.test(chance[3]) ? 'self' : 'target', by: (/raise/i.test(chance[2]) ? 1 : -1) * +chance[4], stats: stageKeys(chance[3]) };
+  else if (after && stageKeys(after[2]).length) t.stat = { pct: 100, who: 'self', by: (after[1] === 'Raises' ? 1 : -1) * +after[3], stats: stageKeys(after[2]) };
+  return t;
+}
+/** Damage dice for a quick move used as a bonus action: smaller than its normal dice, and it adds no ability modifier. */
+export const quickDice = (mv: Pick<Move, 'power'>) => ((mv.power || 40) <= 40 ? '1d4' : (mv.power || 0) <= 80 ? '1d8' : '2d6');
+/** Short labels for a move's traits, for move buttons and the sheet. */
+export function traitLabels(mv: Move): string[] {
+  const t = moveTraits(mv), out: string[] = [];
+  if (t.quick) out.push(`⚡ Bonus action (${quickDice(mv)})`);
+  if (t.sureCrit) out.push('🎯 Always crits'); else if (t.crit19) out.push('🎯 Crits on 19–20');
+  if (t.sure) out.push('✓ Never misses');
+  if (t.hits) out.push(t.hits[0] === t.hits[1] ? `🔁 ${t.hits[0]} hits` : '🔁 2–5 hits');
+  if (t.recoil) out.push('💢 Recoil');
+  if (t.drain) out.push('🩸 Drains HP');
+  if (t.flinch) out.push(`💫 ${t.flinch}% flinch`);
+  if (t.recharge) out.push('⏳ Lose next turn');
+  if (t.stat) out.push(`${t.stat.pct < 100 ? t.stat.pct + '% ' : ''}${t.stat.by > 0 ? '⬆' : '⬇'} ${t.stat.who === 'self' ? 'own' : 'foe’s'} ${t.stat.stats.map(k => STAGE_NAME[k]).join(', ')}`);
+  return out;
+}
+
 /** What a status move does to stats ("Raises the user's Attack by 2.", "Lowers the foe(s) Defense by 1."). */
 export function stageFx(desc: string | undefined) {
   const m = /^(Raises|Lowers) (.+?) by (\d)/.exec(desc || '');
   if (!m) return null;
-  let rest = m[2];
-  const stats: string[] = [];
-  STAGE_WORDS.forEach(([re, k]) => { if (re.test(rest)) { stats.push(k); rest = rest.replace(re, ''); } });
+  const stats = stageKeys(m[2]);
   const who: 'self' | 'foes' | 'target' = /user/.test(m[2]) ? 'self' : /foe\(s\)/.test(m[2]) ? 'foes' : 'target';
   return stats.length ? { who, by: (m[1] === 'Raises' ? 1 : -1) * +m[3], stats } : null;
 }
 const stageOf = (x: Fighter, k: string) => BT()?.stage?.[x.id]?.[k] || 0;
-function shiftStages(x: Fighter, sf: NonNullable<ReturnType<typeof stageFx>>) {
+function shiftStages(x: Fighter, sf: { by: number; stats: string[] }) {
   const b = BT()!, s = ((b.stage ||= {})[x.id] ||= {});
   const moved = sf.stats.filter(k => {
     const key = k === 'spe' ? 'eva' : k, by = k === 'spe' ? Math.sign(sf.by) * Math.ceil(Math.abs(sf.by) / 2) : sf.by, old = s[key] || 0;

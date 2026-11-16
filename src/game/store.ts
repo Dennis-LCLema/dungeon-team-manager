@@ -167,10 +167,12 @@ export type Modal =
   | { kind: 'text'; name: string; text: string };
 export interface UiState {
   tab: string; activeId: string | null; meName: string | null; busy: string; events: GameEvent[];
+  /** The fighter this device has picked as its target in battle. */
+  target: string;
   toasts: Toast[]; modal: Modal | null; seenAnn: string | null; seenHit: string | null; popup: AttackResult | null;
 }
 let uiState: UiState = {
-  tab: saved.tab || 'party', activeId: saved.activeId || null, meName: lsGet<string | null>(ME_KEY, null), busy: '', events: [],
+  tab: saved.tab || 'party', activeId: saved.activeId || null, meName: lsGet<string | null>(ME_KEY, null), busy: '', events: [], target: '',
   toasts: [], modal: null, seenAnn: lsGet<string | null>('pmd-ann', null), seenHit: null, popup: null,
 };
 const uiListeners = new Set<() => void>();

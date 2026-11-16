@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { abilityInfo, bGet, buildEnemy, handleKO, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
+import { abilityInfo, bGet, buildEnemy, handleKO, moveTraits, quickDice, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
 import { AC, M, MAX_TEAM, activeTeam, lootTeam, setReserve, realDice, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
@@ -684,5 +684,57 @@ describe('real dice and several Pokémon per player', () => {
     b = tryIt('easy', 1);
     expect(b.last!.save).toMatch(/goes wrong/);
     expect(attack(heroId, foeId)!.dis).toBe(true);
+  });
+});
+
+describe('move traits', () => {
+  const mk = (name: string) => toTableMove(getMove(name));
+  it('reads what makes each move different from its own text', () => {
+    expect(moveTraits(mk('Tackle'))).toEqual({});
+    expect(moveTraits(mk('Quick Attack'))).toEqual({ quick: true });
+    expect(quickDice(mk('Quick Attack'))).toBe('1d4');
+    expect(quickDice(mk('Extreme Speed'))).toBe('1d8');
+    expect(moveTraits(mk('Slash'))).toEqual({ crit19: true });
+    expect(moveTraits(mk('Swift'))).toEqual({ sure: true });
+    expect(moveTraits(mk('Fury Swipes')).hits).toEqual([2, 5]);
+    expect(moveTraits(mk('Double Kick')).hits).toEqual([2, 2]);
+    expect(moveTraits(mk('Take Down')).recoil).toBe(0.25);
+    expect(moveTraits(mk('Absorb')).drain).toBe(0.5);
+    expect(moveTraits(mk('Bite')).flinch).toBe(30);
+    expect(moveTraits(mk('Hyper Beam')).recharge).toBe(true);
+    expect(moveTraits(mk('Rock Smash')).stat).toEqual({ pct: 50, who: 'target', by: -1, stats: ['def'] });
+    expect(moveTraits(mk('Close Combat')).stat).toEqual({ pct: 100, who: 'self', by: -1, stats: ['spd', 'def'] });
+    expect(moveTraits(mk('Flame Charge')).stat).toMatchObject({ pct: 100, who: 'self', by: 1 });
+    expect(moveTraits(mk('Growl'))).toEqual({}); // status moves have their own rules
+  });
+
+  it('a quick move is a small bonus hit, and other traits change the roll and the aftermath', () => {
+    duel();
+    const use = (name: string, d20: number, bonus?: boolean, foeTurn?: boolean) => {
+      let r: AttackResult | null = null;
+      update(s => { const hero = s.chars[0], foe = s.game.battle!.enemies[0]; hero.hpCur = 20; foe.hpCur = foe.hpMax = 400; const mv = { ...mk(name), ppMax: null };
+        r = foeTurn ? resolveMove(foe, mv, hero, { d20 }) : resolveMove(hero, mv, foe, { d20 }, bonus); });
+      return r!;
+    };
+    vi.spyOn(Math, 'random').mockReturnValue(0.999); // dice roll their highest
+    const full = use('Tackle', 15), jab = use('Quick Attack', 15, true);
+    expect(jab.dmg).toBe(4); // 1d4 and nothing else
+    expect(full.dmg!).toBeGreaterThan(jab.dmg!);
+    expect(G().game.battle!.flags![G().chars[0].id].quickUsed).toBe(true);
+    expect(use('Slash', 19).crit).toBe(true);
+    expect(use('Tackle', 19).crit).toBe(false);
+    expect(use('Swift', 2).hit).toBe(true);   // never misses…
+    expect(use('Swift', 1).hit).toBe(false);  // …except on a natural 1
+    expect(use('Double Kick', 15).extra).toMatch(/Hit 2 times/);
+    const drain = use('Absorb', 15);
+    expect(drain.extra).toMatch(/drained/);
+    expect(G().chars[0].hpCur).toBeGreaterThan(20);
+    expect(use('Take Down', 15).extra).toMatch(/recoil/);
+    expect(G().chars[0].hpCur).toBeLessThan(20);
+    vi.spyOn(Math, 'random').mockReturnValue(0); // every % chance comes up
+    expect(use('Rock Smash', 15).extra).toMatch(/Guard fell/);
+    expect(use('Bite', 15, false, true).extra).toMatch(/flinched/);
+    expect(use('Hyper Beam', 15).extra).toMatch(/recharge/);
+    expect(G().game.battle!.flags![G().chars[0].id].recharge).toBe(true);
   });
 });

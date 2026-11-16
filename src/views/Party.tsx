@@ -103,6 +103,9 @@ export default function Party() {
             <div className="small muted" style={{ marginTop: 4 }}>
               HP {c.hpCur}/{maxHP(c)} · XP {c.xp || 0}/{xpNeed(c.level)} · {eq.length}/4 moves · PP {pp}/{ppMax}{c.held ? ' · holds ' + c.held.name : ''}{c.inDungeon ? ' · 🔒 locked' : ''}
             </div>
+            {dm && c.player && (!c.scores || !c.persona?.ok) ? (
+              <div className="small" style={{ marginTop: 2 }}><b>Set-up:</b> {c.scores ? 'stats ✔' : c.rollMode === 'own' && !c.rolled ? 'stats: type in their rolls' : 'stats not done'} · {c.persona ? 'quiz ⏳ needs your approval' : 'quiz not done'}</div>
+            ) : null}
           </div>
         </button>
         {canEdit(c) && (s.chars.length > 1) ? (

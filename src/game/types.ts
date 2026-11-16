@@ -37,6 +37,8 @@ export interface Char extends Mon {
   blessings?: number; friend?: number;
   /** Waiting in the Safe Zone: not on the travelling team, so no battles, dungeons, loot or XP until called back. */
   reserve?: boolean;
+  /** How the six scores get rolled, chosen before any are shown: by the app, or by the player's own dice (the DM types them in). */
+  rollMode?: 'app' | 'own';
   /** Six ability scores rolled once (4d6, drop the lowest). The player places them, then they lock for good. */
   rolled?: number[];
   /** Where the rolled scores went. Once set, these replace the scores worked out from the species. */

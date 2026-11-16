@@ -230,10 +230,11 @@ export function migrateChars() {
       c.hpCur = c.hpCur >= old ? n : Math.min(n, Math.max(c.hpCur > 0 ? 1 : 0, Math.round((c.hpCur / old) * n)));
       c.hpv = 2;
     }
+    grantMoves(c);
   });
 }
 export const needsMigration = (chars: Char[]) =>
-  chars.some(c => c.hpv !== 2 || (c.tree && (['ability', 'special', 'physical'] as const).some(b => (c.tree[b]?.nodes?.length ?? 10) < 10)));
+  chars.some(c => c.hpv !== 2 || owedMoves(c).length > 0 || (c.tree && (['ability', 'special', 'physical'] as const).some(b => (c.tree[b]?.nodes?.length ?? 10) < 10)));
 
 /* ---------- Creating and growing characters ---------- */
 export function createChar(species: string, nick: string, player: string, level: number): Char {
@@ -247,9 +248,9 @@ export function createChar(species: string, nick: string, player: string, level:
   c.tree = defaultTree(c);
   c.rolled = rollScores();
   c.hpCur = maxHP(c);
-  for (const lm of p.levelMoves.filter(m => m.level <= gameLvl(level)).slice(-4)) {
-    try { const mv = toTableMove(getMove(lm.name)); c.moves.push(mv); c.equipped.push(mv.name); } catch { /* move missing from dex */ }
-  }
+  // It knows every move it has unlocked, with its four newest ready to use.
+  grantMoves(c);
+  c.equipped = c.moves.slice(-4).map(m => m.name);
   return c;
 }
 export function createManual(name: string, nick: string, player: string, level: number): Char {
@@ -271,10 +272,10 @@ export function changeLevel(c: Char, d: number) {
   const newMax = maxHP(c);
   c.hpCur = Math.max(0, Math.min(newMax, c.hpCur + Math.max(0, newMax - oldMax)));
   if (d > 0) {
-    const newly = c.levelMoves.filter(m => m.level > gameLvl(old) && m.level <= gameLvl(c.level) && !c.moves.some(x => x.name === m.name));
+    const newly = grantMoves(c);
     addLog(`${nameOf(c)} reached level ${c.level}.`);
     const notes = ['+1 skill point'];
-    if (newly.length) notes.push('Can now learn: ' + newly.map(m => T(m.name)).join(', '));
+    if (newly.length) notes.push('Learned ' + newly.map(n => T(n)).join(', ') + (c.equipped.length >= 4 ? '. Swap it in on your sheet.' : ''));
     if (mastery(c.level) > mastery(old)) notes.push(`Type Mastery rank ${mastery(c.level)} unlocked!`);
     const ready = c.evoLevel && c.level >= c.evoLevel && c.evo.targets.length;
     if (ready && heldFx(c).noEvo) notes.push('Its Everstone stopped it from evolving.');
@@ -296,6 +297,7 @@ export function evolve(c: Char, target: string) {
     c.custom = false;
     c.img = ''; // an uploaded picture showed the old form: back to the new species' own sprite
     c.hpCur = Math.max(1, Math.round(ratio * maxHP(c)));
+    grantMoves(c);
     c.history.push({ from, to: T(p.species), level: c.level });
     addLog(`${c.nickname || from} evolved into ${T(p.species)}!`);
     announce({ kind: 'evo', char: c.id, name: c.nickname, from, to: T(p.species), species: p.species, types: [...c.types], shiny: c.shiny });
@@ -344,6 +346,14 @@ export function longRest(c: Char) {
     c.friend = (c.friend || 0) + 1;
     if (c.friend === 3 && (c.evo.targets || []).some(t => /friendship/i.test(t.how))) addLog(`${nameOf(c)} trusts the team completely. It can evolve by friendship now!`);
   }
+}
+/** Level-up moves this Pokémon has unlocked but doesn't know yet. */
+export const owedMoves = (c: Char) => (dexReady() ? c.levelMoves.filter(m => m.level <= gameLvl(c.level) && !c.moves.some(x => x.name === m.name)) : []);
+/** Teach every level-up move the Pokémon has unlocked, so nobody has to tap Learn. Returns the names it gained. */
+export function grantMoves(c: Char): string[] {
+  const got: string[] = [];
+  owedMoves(c).forEach(m => { try { if (learnMove(c, toTableMove(getMove(m.name)))) got.push(m.name); } catch { /* move missing from the Pokédex */ } });
+  return got;
 }
 /** Learn a move. One that was forgotten since the last long rest comes back with the PP it had, not a full refill. */
 export function learnMove(c: Char, mv: Move) {

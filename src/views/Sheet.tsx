@@ -11,7 +11,7 @@ import {
 import { activeChar, addLog, ask, canEdit, exportFile, isDM, me, players, setUi, toast, update, useGame } from '../game/store';
 import type { AbilityFx, Branch, Char, Move, MoveClass, Shared, StatKey } from '../game/types';
 import { T, setPath, slug, toID, fmt, readImage, roll } from '../lib/util';
-import { traitLabels } from '../game/battle';
+import { moveHelp, traitLabels } from '../game/battle';
 
 const DM_FIELD = /^(shiny|player|evoChoice|evoLevel|bonus\.|heart|types\.|awakenedType|base\.|abilitiesText|nickname|tree\..*\.(label|name|desc)$)/;
 
@@ -280,7 +280,7 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
         <span className="mn">{T(mv.name)}</span><TypeChip t={mv.type} /><span className="small muted">{mv.cls}</span><span style={{ flex: 1 }} />
         {slot ? <button className="btn sm ghost" disabled={locked} onClick={() => withChar(c.id, x => { if (!x.inDungeon) x.equipped = x.equipped.filter(n => n !== name); })}>Unequip</button> : <>
           <button className="btn sm" disabled={locked || c.equipped.length >= 4} onClick={() => withChar(c.id, x => { if (!x.inDungeon && x.equipped.length < 4) x.equipped.push(name); })}>Equip</button>
-          <button className="btn sm ghost danger" disabled={locked} onClick={forget}>Forget</button>
+          {c.levelMoves.some(m => m.name === name) ? null : <button className="btn sm ghost danger" disabled={locked} onClick={forget}>Forget</button>}
         </>}
       </div>
       <div className="small mono" style={{ margin: '4px 0' }}>{line}</div>
@@ -296,7 +296,7 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
         </div>
       )) : <div className="small muted">{mv.ppMax == null ? 'At-will' : mv.ppMax + ' PP per long rest'}</div>}
       {traitLabels(mv).length ? <div className="small" style={{ marginTop: 4, fontWeight: 600 }}>{traitLabels(mv).join(' · ')}</div> : null}
-      {mv.desc ? <div className="small muted" style={{ marginTop: 4 }}>{mv.desc}</div> : null}
+      <div className="small" style={{ marginTop: 4 }}>{moveHelp(mv)}</div>
     </div>
   );
 }
@@ -305,12 +305,11 @@ function MoveCard({ c, mv, slot }: { c: Char; mv: Move; slot: boolean }) {
 function MoveInfo({ name }: { name: string }) {
   let m: ReturnType<typeof getMove> | null = null;
   try { m = getMove(name); } catch { /* a custom move: nothing to show */ }
-  return m ? <span className="small muted" title={m.desc}><TypeChip t={m.type} /> {m.cls}{m.cls === 'status' ? '' : ' · ' + diceFor(m.power, m.cls)}</span> : null;
+  return m ? <><span className="small muted"><TypeChip t={m.type} /> {m.cls}{m.cls === 'status' ? '' : ' · ' + diceFor(m.power, m.cls)}</span><div className="small muted" style={{ fontWeight: 400 }}>{moveHelp(toTableMove(m))}</div></> : null;
 }
 
 function Moves({ c }: { c: Char }) {
   const dm = isDM(), eq = equippedOf(c), pool = c.moves.filter(m => !c.equipped.includes(m.name));
-  const learnable = c.levelMoves.filter(m => m.level <= gameLvl(c.level) && !c.moves.some(x => x.name === m.name));
   const all = c.levelMoves.slice().sort((a, b) => a.level - b.level), wish = c.wish || [], edit = canEdit(c);
   const [mvName, setMvName] = useState('');
   const [wishName, setWishName] = useState('');
@@ -352,21 +351,19 @@ function Moves({ c }: { c: Char }) {
       {eq.map(m => <MoveCard key={m.name} c={c} mv={m} slot />)}
       {Array.from({ length: Math.max(0, 4 - eq.length) }, (_, i) => <div key={i} className="move empty small">Empty slot</div>)}
       <h3>Move pool</h3>
+      <p className="small muted tip" style={{ marginTop: 0 }}>New moves arrive here by themselves when your Pokémon reaches their level. Equip up to four.</p>
       {pool.length ? pool.map(m => <MoveCard key={m.name} c={c} mv={m} slot={false} />) : <p className="small muted">All known moves are equipped.</p>}
-      {learnable.length ? <><h3>Ready to learn</h3>{learnable.map(m => (
-        <div className="list-item" key={m.name}><span className="grow">{T(m.name)} <span className="small muted">Lv {appLvl(m.level)}</span></span><button className="btn sm" onClick={() => learn(m.name)}>Learn</button></div>
-      ))}</> : null}
       {all.length ? (
         <details style={{ marginTop: 12 }}>
           <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Every move {T(c.species)} learns ({all.length})</summary>
           <p className="small muted tip" style={{ margin: '6px 0' }}>Tap ☆ to put a move on the wishlist.</p>
           {all.map(m => {
-            const has = c.moves.some(x => x.name === m.name), ok = m.level <= gameLvl(c.level);
+            const has = c.moves.some(x => x.name === m.name);
             return (
               <div className="list-item small" key={m.name + m.level}>
                 <span className="muted mono" style={{ minWidth: 44 }}>Lv {appLvl(m.level)}</span>
                 <span className="grow"><b>{T(m.name)}</b> <MoveInfo name={m.name} /></span>
-                {has ? <span className="tag good">Known</span> : ok ? <span className="tag">Ready</span> : null}
+                {has ? <span className="tag good">Known</span> : null}
                 {has ? null : star(m.name)}
               </div>
             );
@@ -517,17 +514,46 @@ function Bag({ c, others }: { c: Char; others: Char[] }) {
 }
 
 /** One-time stat roll: six scores were rolled when the Pokémon was made. Its player places them, then they lock for good. */
-function StatRoll({ c }: { c: Char }) {
+export function StatRoll({ c }: { c: Char }) {
   const dm = isDM();
   const [at, setAt] = useState<Record<string, string>>({});
+  const [typed, setTyped] = useState(['', '', '', '', '', '']);
   if (c.scores) return null;
-  const rolls = c.rolled;
-  if (!rolls) return dm ? (
-    <section className="card callout row between">
-      <span><b>🎲 Stat roll</b> <span className="small muted">This Pokémon was made before stat rolls. Roll six scores for its player to place.</span></span>
-      <button className="btn primary" onClick={() => withChar(c.id, x => { x.rolled = rollScores(); addLog(`Dennis rolled stats for ${nameOf(x)}: ${x.rolled.join(', ')}.`); })}>Roll stats</button>
+  const rolls = c.rollMode ? c.rolled : undefined;
+  // The choice comes before any number is shown, so nobody can look at the app's rolls and then reach for their own dice.
+  const choose = (mode: 'app' | 'own') => withChar(c.id, x => {
+    x.rollMode = mode;
+    if (mode === 'own') delete x.rolled; else x.rolled ||= rollScores();
+    addLog(mode === 'own' ? `${nameOf(x)}'s player will roll their own dice for stats.` : `The app rolled stats for ${nameOf(x)}: ${x.rolled!.join(', ')}.`);
+  });
+  if (!c.rollMode) return (
+    <section className="card callout">
+      <h2 style={{ marginTop: 0 }}>🎲 Roll {nameOf(c)}'s stats</h2>
+      <p className="small" style={{ margin: '0 0 10px' }}>Six scores, each 4d6 with the lowest die dropped. Choose who rolls. You can't change your mind after you see the numbers.</p>
+      <div className="row">
+        <button className="btn primary" onClick={() => choose('app')}>Roll for me</button>
+        <button className="btn" onClick={() => choose('own')}>I'll roll my own dice</button>
+      </div>
     </section>
-  ) : null;
+  );
+  if (!rolls) {
+    const nums = typed.map(v => Math.round(+v)), ok = typed.every((v, i) => v !== '' && nums[i] >= 3 && nums[i] <= 18);
+    return (
+      <section className="card callout">
+        <h2 style={{ marginTop: 0 }}>🎲 Roll your own dice</h2>
+        <p className="small" style={{ margin: '0 0 8px' }}>Roll <b>4d6</b>, drop the lowest die and add the other three. Do that <b>six times</b> and tell Dennis the six totals (each is 3 to 18).</p>
+        {dm ? <>
+          <div className="row" style={{ gap: 6 }}>
+            {typed.map((v, i) => <input key={i} type="number" min={3} max={18} value={v} aria-label={`Score ${i + 1}`} style={{ width: 64 }} onChange={e => setTyped(typed.map((w, j) => (j === i ? e.target.value : w)))} />)}
+          </div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn primary" disabled={!ok} onClick={() => withChar(c.id, x => { x.rolled = nums; addLog(`Dennis entered ${nameOf(x)}'s own stat rolls: ${nums.join(', ')}.`); })}>Save their rolls</button>
+            <button className="btn ghost" onClick={() => withChar(c.id, x => { delete x.rollMode; delete x.rolled; })}>Let them choose again</button>
+          </div>
+        </> : <p className="small muted" style={{ margin: 0 }}><span className="spin" /> Waiting for Dennis to type them in.</p>}
+      </section>
+    );
+  }
   const used = Object.values(at).filter(Boolean), slots: [string, string][] = [...STATS.map(([k, l, d]) => [k, `${l} (${d})`] as [string, string]), ['heart', 'Heart (CHA)']];
   const lock = () => run(async () => {
     if (!(await ask(`Lock in these stats for ${nameOf(c)}? They can't be changed afterwards.`, 'Lock in'))) return;
@@ -537,7 +563,7 @@ function StatRoll({ c }: { c: Char }) {
   return (
     <section className="card callout">
       <h2 style={{ marginTop: 0 }}>🎲 Your stat rolls</h2>
-      <p className="small" style={{ margin: '0 0 8px' }}>The dice rolled these six scores. Put one in each stat, highest where you want to be strongest. This is a one-time choice.</p>
+      <p className="small" style={{ margin: '0 0 8px' }}>{c.rollMode === 'own' ? 'Your own dice rolled' : 'The dice rolled'} these six scores. Put one in each stat, highest where you want to be strongest. This is a one-time choice.</p>
       <div className="row" style={{ gap: 6, marginBottom: 10 }}>
         {rolls.map((n, i) => <span key={i} className={`tag ${used.includes(String(i)) ? '' : 'good'}`} style={{ fontSize: 15 }}>{n}</span>)}
       </div>
@@ -554,6 +580,7 @@ function StatRoll({ c }: { c: Char }) {
       <div className="row" style={{ marginTop: 10 }}>
         <button className="btn primary" disabled={used.length < 6} onClick={lock}>Lock in my stats</button>
         <button className="btn ghost" disabled={!used.length} onClick={() => setAt({})}>Start over</button>
+        {dm ? <button className="btn ghost" onClick={() => withChar(c.id, x => { delete x.rollMode; delete x.rolled; })}>Reset the roll</button> : null}
       </div>
     </section>
   );
@@ -572,7 +599,7 @@ export function PersonaDmButtons({ c }: { c: Char }) {
 }
 
 /** Personality: an 8-question quiz gives a nature (a small stat boost) and a demeanor to roleplay. The DM approves the result. */
-function PersonaCard({ c }: { c: Char }) {
+export function PersonaCard({ c }: { c: Char }) {
   const dm = isDM(), p = c.persona;
   const [ans, setAns] = useState<number[] | null>(null);
   const [pick, setPick] = useState({ nature: 'hardy', demeanor: 'steady' });

@@ -22,6 +22,7 @@ import Play from './views/Play';
 import Sheet from './views/Sheet';
 import Storage from './views/Storage';
 import WorldView from './views/World';
+import Setup from './views/Setup';
 
 /** Help text is hidden until someone asks for it, so screens stay short. Remembered on this device. */
 function toggleTips() {
@@ -127,6 +128,14 @@ function Shell() {
   if (!dm && ['dungeon', 'battle'].includes(tab)) tab = 'play';
   if (dm && tab === 'play') tab = 'party';
   if (!u) return <Login />;
+
+  // Before the adventure: a player waits for a Pokémon, then finishes its stat roll and quiz. A battle or dungeon run
+  // already under way is never blocked, and Account stays reachable.
+  if (!dm && tab !== 'account') {
+    const own = s.chars.filter(owns), busy = (!!b && !b.result) || s.dungeon.state !== 'idle';
+    const todo = own.find(c => !c.scores || !c.persona);
+    if (!own.length || (todo && !busy)) return <main className="gutter"><Setup c={own.length ? todo! : null} /></main>;
+  }
 
   const nl = s.loot.lines.length, myCount = s.chars.filter(owns).length, mine = myCount > 0;
   const tabs: [string, string][] = dm

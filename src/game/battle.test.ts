@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { abilityInfo, bGet, buildEnemy, handleKO, moveTraits, quickDice, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
+import { abilityInfo, bGet, buildEnemy, handleKO, moveHelp, moveTraits, quickDice, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
-import { AC, M, MAX_TEAM, activeTeam, lootTeam, setReserve, realDice, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
+import { AC, M, grantMoves, owedMoves, needsMigration, MAX_TEAM, activeTeam, lootTeam, setReserve, realDice, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
 import { G, LOG_KEEP, addLog, logKind, setUi, update } from './store';
 import { getMove } from './dex';
 import type { AttackResult, Char, Enemy } from './types';
@@ -736,5 +736,42 @@ describe('move traits', () => {
     expect(use('Bite', 15, false, true).extra).toMatch(/flinched/);
     expect(use('Hyper Beam', 15).extra).toMatch(/recharge/);
     expect(G().game.battle!.flags![G().chars[0].id].recharge).toBe(true);
+  });
+});
+
+describe('moves without a Learn step, and a description for every move', () => {
+  it('a Pokémon knows every move it has unlocked, and gains new ones as it levels', () => {
+    const c = createChar('Hawlucha', '', 'Luis', 2); // no evolution to change its move list mid-test
+    const unlocked = (lv: number) => c.levelMoves.filter(m => m.level <= lv * 5).map(m => m.name).sort();
+    expect(c.moves.map(m => m.name).sort()).toEqual(unlocked(2));
+    expect(c.equipped.length).toBeLessThanOrEqual(4);
+    expect(owedMoves(c)).toEqual([]);
+    update(s => { s.chars = [c]; changeLevel(c, 3); });
+    expect(c.moves.map(m => m.name).sort()).toEqual(unlocked(5));
+    expect(G().game.events!.at(-1)!.notes!.join(' ')).toMatch(/Learned /);
+    // An older save that is missing unlocked moves gets them on load.
+    const old = JSON.parse(JSON.stringify(c)) as Char; // the saved copy is frozen; work on a plain one
+    old.moves = old.moves.slice(0, 1);
+    expect(needsMigration([old])).toBe(true);
+    expect(grantMoves(old).length).toBeGreaterThan(0);
+    expect(needsMigration([old])).toBe(false);
+  });
+
+  it('explains every move in the Pokédex in plain words', () => {
+    const dex = JSON.parse(readFileSync('public/dex.json', 'utf8'));
+    Object.values(dex.m as Record<string, [string]>).forEach(m => {
+      const help = moveHelp(toTableMove(getMove(m[0])));
+      expect(help.length, m[0]).toBeGreaterThan(20);
+      expect(help, m[0]).not.toMatch(/undefined|NaN/);
+    });
+    const help = (n: string) => moveHelp(toTableMove(getMove(n)));
+    expect(help('Tackle')).toMatch(/1d8 Normal damage.*plain, reliable hit/);
+    expect(help('Quick Attack')).toMatch(/Bonus action.*1d4/);
+    expect(help('Swords Dance')).toMatch(/You get \+2 to hit and damage with physical moves/);
+    expect(help('Growl')).toMatch(/Every foe gets −1 to hit and damage with physical moves/);
+    expect(help('Thunder Wave')).toMatch(/CON save.*paralyzed/);
+    expect(help('Recover')).toMatch(/You heal half of max HP/);
+    expect(help('Protect')).toMatch(/Blocks the next attack/);
+    expect(help('Ember')).toMatch(/10% chance to leave the target burned/);
   });
 });

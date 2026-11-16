@@ -28,6 +28,8 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🌫️ **Creative moments**: turn a clever idea (Fire on Water makes a Steam Fog) into a field effect for a few rounds
 - 🔥 **Status conditions**: burn, poison, paralysis, sleep, freeze and confusion run automatically each turn
 - 🎲 **Everything rolls itself**: every status move (stat changes, heals, Protect, cures and the rest), status chances on attacks (Ember's burn), saves and assists need no bookkeeping
+- 🚪 **Start-up screens**: players wait until the DM gives them a Pokémon, then finish its stat roll (the app's dice or their own) and personality quiz before the app opens
+- 📖 **Every move explained** in plain words, and learned automatically at the level it unlocks
 - 🥋 **Moves that play differently**: Quick Attack is a bonus action, Slash crits on 19–20, Swift never misses, Fury Swipes hits 2–5 times, Take Down has recoil, Absorb drains, Bite can flinch, Hyper Beam costs a turn. All read from each move's own text
 - 👆 **Tap to target**: tap a Pokémon in the battle scene, which fits six a side on a phone
 - 🎬 **Battle scene**: a d20 tumbles and lands for every roll, attacks fly across the scene, damage numbers float up, and built-in sound effects play (🔔 in the top bar turns them off)

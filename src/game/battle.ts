@@ -481,6 +481,45 @@ function shiftStages(x: Fighter, sf: { by: number; stats: string[] }) {
   return moved.length ? `${nameOf(x)}'s ${moved.map(k => STAGE_NAME[k]).join(' and ')} ${sf.by > 0 ? 'rose' : 'fell'}!` : `${nameOf(x)}'s stats can't go any ${sf.by > 0 ? 'higher' : 'lower'}.`;
 }
 
+const STAGE_MEANS: Record<string, string> = {
+  atk: 'to hit and damage with physical moves', spa: 'to hit and damage with special moves', def: 'Guard (how hard physical moves are to land)',
+  spd: 'Sp. Guard (how hard special moves are to land)', spe: 'Dodge, at half strength', acc: 'to hit with every move', eva: 'Dodge (harder to hit at all)',
+};
+const stageHelp = (stats: string[], by: number) => stats.map(k => `${by > 0 ? '+' : '−'}${Math.abs(k === 'spe' ? Math.ceil(Math.abs(by) / 2) : by)} ${STAGE_MEANS[k] || k}`).join('; ');
+/** What a move does in this game, in plain words: damage, what makes it special, and what any stat change means.
+    shortcut: the support-move wording mirrors supportMove's tests by hand; change the two together. */
+export function moveHelp(mv: Move): string {
+  const d = mv.desc || '';
+  if (mv.cls !== 'status' && mv.dice) {
+    const t = moveTraits(mv), out = [`Deals ${mv.dice} ${T(mv.type)} damage, plus your ${mv.cls === 'physical' ? 'Attack' : 'Sp. Atk'} modifier (${mv.cls === 'physical' ? 'Attack against Guard' : 'Sp. Atk against Sp. Guard'}).`];
+    if (t.quick) out.push(`Bonus action: once a turn you can throw it in for ${quickDice(mv)} damage with no modifier, and still take your turn.`);
+    if (t.sureCrit) out.push('Every hit is a critical hit.'); else if (t.crit19) out.push('Crits on a 19 or 20.');
+    if (t.sure) out.push('Never misses, except on a natural 1.');
+    if (t.hits) out.push(t.hits[0] === t.hits[1] ? `Hits ${t.hits[0]} times: +${t.hits[0] - 1}d4 damage.` : 'Hits 2 to 5 times: +1d4 damage for each hit after the first.');
+    if (t.recoil) out.push(`You take ${Math.round(t.recoil * 100)}% of the damage you deal as recoil.`);
+    if (t.drain) out.push(`You heal ${Math.round(t.drain * 100)}% of the damage you deal.`);
+    if (t.flinch) out.push(`${t.flinch}% chance the target flinches: disadvantage on its next attack.`);
+    const side = sideStatus(d);
+    if (side) out.push(`${side.pct}% chance to leave the target ${STATUS[side.st].n.toLowerCase()}: ${STATUS[side.st].d.charAt(0).toLowerCase()}${STATUS[side.st].d.slice(1)}`);
+    if (t.stat) out.push(`${t.stat.pct < 100 ? t.stat.pct + '% chance: ' : 'On a hit: '}${t.stat.who === 'self' ? 'you get' : 'the target gets'} ${stageHelp(t.stat.stats, t.stat.by)}, until the battle ends.`);
+    if (t.recharge) out.push('You lose your next turn.');
+    if (out.length === 1) out.push('No extra effect: a plain, reliable hit.');
+    return out.join(' ');
+  }
+  const st = STATUS_MOVES[mv.name];
+  if (st) return `The target rolls a ${({ def: 'CON', spe: 'DEX', spd: 'WIS' })[STATUS_SAVE[st]]} save against your DC. If it fails it is ${STATUS[st].n.toLowerCase()}: ${STATUS[st].d.charAt(0).toLowerCase()}${STATUS[st].d.slice(1)}`;
+  const sf = stageFx(d);
+  if (sf) return `${sf.who === 'self' ? 'You get' : sf.who === 'foes' ? 'Every foe gets' : 'The target gets'} ${stageHelp(sf.stats, sf.by)}. Lasts until the battle ends; changes stack up to 3.`;
+  if (mv.name === 'rest') return 'You heal to full HP, then fall asleep.';
+  if (/\b(heals?|healed|restores|recovers)\b/i.test(d) && !/per turn|every turn|item|Stockpile|faint|Next turn/i.test(d)) {
+    const all = /allies/i.test(d);
+    return `${all ? 'You and your allies each heal a quarter' : /target/i.test(d) ? 'You or an ally heals ' + (/1\/4/.test(d) ? 'a quarter' : 'half') : 'You heal ' + (/1\/4/.test(d) ? 'a quarter' : 'half')} of max HP.${/cure/i.test(d) ? ' Status conditions are cured too.' : ''}`;
+  }
+  if (/\bcures?\b/i.test(d)) return `${/party|allies/i.test(d) ? 'Your whole team is' : /target/i.test(d) ? 'You or an ally is' : 'You are'} cured of status conditions.`;
+  if (/^Protects|Prevents moves from affecting|survives attacks/i.test(d)) return 'Blocks the next attack against you before your next turn.';
+  return `${d ? d + ' ' : ''}In this game: used on a foe, it rolls a WIS save or attacks next with disadvantage. Used on yourself or an ally, the next attack has advantage.`;
+}
+
 /** Every other status move, resolved from its Pokédex text: a heal, a cure, protection, or (for anything stranger) a
     simple edge, so no status move waits on the DM. A foe saves (WIS) or attacks next with disadvantage; an ally attacks next with advantage. */
 function supportMove(actor: Fighter, mv: Move, target: Fighter, res: AttackResult): string {

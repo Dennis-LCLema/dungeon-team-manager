@@ -3,7 +3,7 @@ import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { Die, stillMotion } from '../components/Dice';
 import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { STAGE_NAME, STUNTS, moveTraits, quickDice, traitLabels, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, STUNTS, moveHelp, moveTraits, quickDice, traitLabels, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, abilityFxText, lootTeam, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame, useUi } from '../game/store';
@@ -417,7 +417,7 @@ function TurnPanel({ b }: { b: Battle }) {
         {moves.length ? moves.map((m, i) => {
           const out = m.ppMax != null && m.ppCur <= 0, traits = traitLabels(m), spent = isPc && !!moveTraits(m).quick && quickUsed;
           return (
-            <button key={m.name} className="mv" style={{ '--tc': TCOL[m.type] || '#888' } as React.CSSProperties} disabled={out || spent} title={m.desc} onClick={() => pickMove(i)}>
+            <button key={m.name} className="mv" style={{ '--tc': TCOL[m.type] || '#888' } as React.CSSProperties} disabled={out || spent} title={moveHelp(m)} onClick={() => pickMove(i)}>
               <span className="mv-n">{T(m.name)}</span>
               <span className="mv-m"><TypeChip t={m.type} /><span className="mono">{m.dice ? diceOf(m) : 'status'}</span><span className="mono">{m.ppMax == null ? '∞' : `${m.ppCur}/${m.ppMax} PP`}</span></span>
               {traits.length ? <span className="mv-t">{traits.join(' · ')}</span> : null}
@@ -426,6 +426,12 @@ function TurnPanel({ b }: { b: Battle }) {
           );
         }) : <p className="small muted">No moves equipped.</p>}
       </div>
+      {moves.length ? (
+        <details style={{ marginTop: 8 }}>
+          <summary className="small" style={{ cursor: 'pointer', fontWeight: 700 }}>ⓘ What these moves do</summary>
+          {moves.map(m => <p key={m.name} className="small" style={{ margin: '6px 0 0' }}><b>{T(m.name)}:</b> {moveHelp(m)}</p>)}
+        </details>
+      ) : null}
       {noPunch ? <div className="row" style={{ marginTop: 8 }}><button className="btn" onClick={doStruggle}>Struggle (1d8)</button><span className="small muted">No damaging move has PP left.</span></div> : null}
       {bag.length || (mySide === 'team' && shadowFoes.length) || downed.length || readyAssists.length || canMega || abil || isPc || (!isPc && dm) ? <>
         <div className="small muted" style={{ margin: '12px 0 6px', fontWeight: 600 }}>Or do something else</div>

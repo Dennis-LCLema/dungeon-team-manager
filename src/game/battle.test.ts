@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { rollDice } from '../lib/util';
-import { abilityInfo, bGet, buildEnemy, handleKO, moveHelp, moveTraits, quickDice, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
+import { abilityInfo, bGet, buildEnemy, guessStat, pendingFx, handleKO, moveHelp, moveTraits, quickDice, resolveStunt, nextTurn, resolveMove, setInitRoll, sideStatus, stageFx, startBattle, toHit, triggerAbility } from './battle';
 import { setDex } from './dex';
 import { musicFor } from './music';
 import { AC, M, grantMoves, owedMoves, needsMigration, MAX_TEAM, activeTeam, lootTeam, setReserve, realDice, cleanChar, forgetMove, learnMove, longRest, toTableMove, changeLevel, createChar, effectiveness, equippedOf, haggleOff, healPrice, lockScores, maxHP, quizResult, score } from './rules';
@@ -674,13 +674,17 @@ describe('real dice and several Pokémon per player', () => {
   it('a stunt the DM rules on gives the next attack an edge, or trips it up', () => {
     const { heroId, foeId } = duel();
     setUi({ meName: 'Dennis' });
-    const tryIt = (level: string, d20: number) => { update(s => { s.game.battle!.stunt = { id: heroId, text: 'Backflip strike', stat: 'spe' }; resolveStunt(level, d20); }); return G().game.battle!; };
+    const tryIt = (level: string, d20: number) => { update(s => { s.game.battle!.stunt = { id: heroId, text: 'Backflip strike', stat: 'spe', level }; resolveStunt(d20); }); return G().game.battle!; };
     let b = tryIt('wild', 20);
     expect(b.last).toMatchObject({ stunt: true });
     expect(b.last!.save).toMatch(/it works! .*\+2d6/);
     expect(b.stunt).toBeUndefined();
+    update(() => { expect(pendingFx(G().chars[0])).toEqual([{ t: 'Next attack: advantage and +2d6', good: true }]); });
     expect(attack(heroId, foeId)!.adv).toBe(true);
     expect(attack(heroId, foeId)!.adv).toBe(false);
+    update(s => { s.game.battle!.stunt = { id: heroId, text: 'Not approved yet', stat: 'spe' }; resolveStunt(20); });
+    expect(G().game.battle!.stunt).toBeDefined(); // nothing rolls until the DM sets how hard it is
+    expect([guessStat('Backflip off the wall'), guessStat('Smash the pillar onto it'), guessStat('Taunt it into charging me'), guessStat('Stare at it')]).toEqual(['spe', 'atk', 'heart', null]);
     b = tryIt('easy', 1);
     expect(b.last!.save).toMatch(/goes wrong/);
     expect(attack(heroId, foeId)!.dis).toBe(true);

@@ -35,7 +35,7 @@ The Dungeon Master runs the world, battles and loot from one screen. Each player
 - 🎬 **Battle scene**: a d20 tumbles and lands for every roll, attacks fly across the scene, damage numbers float up, and built-in sound effects play (🔔 in the top bar turns them off)
 - 🎯 **Real dice, if a player wants them**: a player ticks "I'll roll my own dice" before picking a move (or the DM turns it on for everyone), rolls at the table, and the DM types the numbers in. Works for attacks, Purify and ability checks
 - 👥 **A travelling team of 6**: a player can run several Pokémon, each on its own turn. Extras wait in the Safe Zone and are swapped in there
-- 🤸 **Stunts**: a player describes anything their Pokémon tries, the DM sets how hard it is, and the dice decide whether the next attack gets an edge
+- 🤸 **Stunts**: a player describes anything their Pokémon tries, the app suggests the ability, the DM approves and sets how hard it is, then the player taps Roll. Every pending effect (advantage on the next attack, a block, a lost turn) shows as a label on the Pokémon
 - 🌳 **Write your own skill-tree entries**: a player rewrites an entry and picks a bonus (+1 to hit, +4 max HP…); once the DM approves it, the app applies it
 - ⚔️🛡️ **Weapons and armor** in their own slots, alongside a held item
 - 🥊 A one-tap **graduation spar** against the rival team, each rival hunting the player it chose

@@ -3,7 +3,7 @@ import { Avatar, HpBar, TypeChip, Types, run } from '../components/common';
 import { Die, stillMotion } from '../components/Dice';
 import { sfx } from '../lib/sfx';
 import { CAST, FIELD_KINDS, FIELD_PRESETS, STATUS, SURPRISE, TCOL } from '../game/data';
-import { STAGE_NAME, STUNTS, moveHelp, moveTraits, quickDice, traitLabels, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
+import { STAGE_NAME, STUNTS, guessStat, pendingFx, moveHelp, moveTraits, quickDice, traitLabels, abilityInfo, callAssist, resolveStunt, struggle, triggerAbility, autoTurn, bGet, buildRivals, setStatus, startRivalSpar, blog, buildEnemy, checkEnd, controls, handleKO, isOut, nextTurn, resolveMove, rollSurprise, setInitRoll, sideOf, startBattle, toHit } from '../game/battle';
 import { sceneUrl } from '../components/mapDecor';
 import { M, MAX_LEVEL, abilityFxText, lootTeam, applyItem, clampHP, critOn, effectiveness, equippedOf, fmtMega, hpMaxOf, maxHP, megaForms, nameOf, prof, usableBag } from '../game/rules';
 import { G, addLog, announce, ask, isDM, owns, setUi, toast, update, useGame, useUi } from '../game/store';
@@ -289,18 +289,20 @@ function TurnPanel({ b }: { b: Battle }) {
   const [stuntOpen, setStuntOpen] = useState(false);
   const [stuntText, setStuntText] = useState('');
   const [stuntStat, setStuntStat] = useState('spe');
+  const [stuntAuto, setStuntAuto] = useState(true); // follow the wording until the player picks an ability themselves
   const [stuntD20, setStuntD20] = useState('');
   const stunted = !!b.flags?.[actor.id]?.stunted;
   const askStunt = () => {
     if (stuntText.trim().length < 3) return toast('Say what your Pokémon does.', 'bad');
     onTurn((bb, _c, a) => { bb.stunt = { id: a.id, text: stuntText.trim(), stat: stuntStat }; blog(`${nameOf(a)} wants to try a stunt: “${stuntText.trim()}”`); });
-    setStuntOpen(false); setStuntText('');
+    setStuntOpen(false); setStuntText(''); setStuntAuto(true);
   };
-  const ruleStunt = (level: string) => run(() => {
-    const t = Math.round(+stuntD20), real = stuntD20 !== '';
-    if (real && !(t >= 1 && t <= 20)) return toast('Type the d20 they rolled (1 to 20).', 'bad');
-    if (own && !real) return toast(`${hero?.player || 'This player'} rolls real dice. Type their d20 first.`, 'bad');
-    update(() => resolveStunt(level, real ? t : undefined));
+  // The DM approves by saying how hard it is; then the player rolls (or the DM does, or types in their real d20).
+  const ruleStunt = (level: string) => update(d => { const st = d.game.battle?.stunt; if (st && isDM()) { st.level = level; blog(`Dennis allows it: ${STUNTS[level].n} (${STUNTS[level].dc}).`); } });
+  const rollStunt = (useTyped: boolean) => run(() => {
+    const t = Math.round(+stuntD20);
+    if (useTyped && !(t >= 1 && t <= 20)) return toast('Type the d20 they rolled (1 to 20).', 'bad');
+    update(() => resolveStunt(useTyped ? t : undefined));
     setStuntD20('');
   });
   const STATS6: [string, string][] = [['atk', 'STR'], ['spe', 'DEX'], ['def', 'CON'], ['spa', 'INT'], ['spd', 'WIS'], ['heart', 'CHA']];
@@ -338,16 +340,38 @@ function TurnPanel({ b }: { b: Battle }) {
   return (
     <div className="card callout turn">
       <div className="row between"><h2 style={{ margin: 0 }}>{isPc && owns(hero) ? 'Your turn: ' : ''}{nameOf(actor)}</h2><span className="small muted">Round {b.round}</span></div>
+      {pendingFx(actor).length || actor.status ? (
+        <div className="row small" style={{ gap: 6, marginTop: 6 }}>
+          {actor.status ? <span className="tag">{STATUS[actor.status].g} {STATUS[actor.status].n}: {STATUS[actor.status].d}</span> : null}
+          {pendingFx(actor).map(w => <span key={w.t} className={`eff ${w.good ? 'up' : 'down'}`}>{w.t}</span>)}
+        </div>
+      ) : null}
       {b.stunt ? (
         <div className="banner">
           <b>🤸 Stunt:</b> “{b.stunt.text}” <span className="small muted">{STATS6.find(x => x[0] === b.stunt!.stat)?.[1]} check {fmt(M(actor, b.stunt.stat as 'atk'))}</span>
-          {dm ? (
+          {!b.stunt.level ? (dm ? (
             <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <select aria-label="Ability the stunt uses" style={{ width: 'auto' }} value={b.stunt.stat} onChange={e => { const v = e.target.value; update(d => { if (d.game.battle?.stunt) d.game.battle.stunt.stat = v; }); }}>
+                {STATS6.map(([k, l]) => <option key={k} value={k}>{l} {fmt(M(actor, k as 'atk'))}</option>)}
+              </select>
               {Object.entries(STUNTS).map(([k, v]) => <button key={k} className="btn sm primary" title={`Works: ${v.win} on the next attack. Fails: disadvantage.`} onClick={() => ruleStunt(k)}>{v.n} ({v.dc})</button>)}
-              <input type="number" min={1} max={20} value={stuntD20} onChange={e => setStuntD20(e.target.value)} placeholder={own ? 'their d20' : 'real d20'} aria-label="The d20 they rolled, if they used real dice" style={{ width: 96 }} />
               <button className="btn sm ghost" onClick={() => update(d => { if (d.game.battle) { blog('Dennis says no to the stunt.'); delete d.game.battle.stunt; } })}>Not this time</button>
             </div>
-          ) : <div className="small" style={{ marginTop: 4 }}>{own ? 'Roll your real d20 and tell Dennis. He decides how hard it is.' : 'Waiting for Dennis to say how hard it is.'}</div>}
+          ) : <div className="small" style={{ marginTop: 4 }}><span className="spin" /> Waiting for Dennis to say how hard it is.</div>) : (
+            <>
+              <div style={{ marginTop: 6 }}><b>Dennis allows it: {STUNTS[b.stunt.level].n}.</b> Roll a <b>d20 {fmt(M(actor, b.stunt.stat as 'atk'))}</b> ({STATS6.find(x => x[0] === b.stunt!.stat)?.[1]}). You need <b>{STUNTS[b.stunt.level].dc}</b> or more.</div>
+              <div className="small">Works: {STUNTS[b.stunt.level].win} on your next attack. Fails: disadvantage on it.</div>
+              <div className="row" style={{ marginTop: 8, gap: 6, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                {own && !dm ? <span className="small">🎲 Roll your real d20 and tell Dennis the number.</span>
+                  : !own ? <button className="btn primary" onClick={() => rollStunt(false)}>🎲 Roll{dm && isPc && !owns(hero) ? ' for them' : ''}</button> : null}
+                {dm ? <>
+                  <input type="number" min={1} max={20} value={stuntD20} onChange={e => setStuntD20(e.target.value)} placeholder={own ? 'their d20' : 'real d20'} aria-label="The d20 they rolled with real dice" style={{ width: 96 }} />
+                  <button className="btn sm" disabled={stuntD20 === ''} onClick={() => rollStunt(true)}>Use their roll</button>
+                  <button className="btn sm ghost" onClick={() => update(d => { if (d.game.battle) { blog('Dennis calls off the stunt.'); delete d.game.battle.stunt; } })}>Cancel</button>
+                </> : null}
+              </div>
+            </>
+          )}
         </div>
       ) : null}
       <label style={{ margin: '10px 0' }}>1. Pick a target <span className="small muted">(or tap one in the scene above)</span>
@@ -462,14 +486,14 @@ function TurnPanel({ b }: { b: Battle }) {
       </> : null}
       {stuntOpen && !b.stunt && !stunted ? (
         <form className="loot" style={{ marginTop: 10 }} onSubmit={e => { e.preventDefault(); askStunt(); }}>
-          <label>What does {nameOf(actor)} do?<input autoFocus value={stuntText} maxLength={140} onChange={e => setStuntText(e.target.value)} placeholder="e.g. Backflip off the wall and strike from above" /></label>
+          <label>What does {nameOf(actor)} do?<input autoFocus value={stuntText} maxLength={140} onChange={e => { setStuntText(e.target.value); const g = stuntAuto ? guessStat(e.target.value) : null; if (g) setStuntStat(g); }} placeholder="e.g. Backflip off the wall and strike from above" /></label>
           <div className="row" style={{ marginTop: 8, gap: 6, alignItems: 'flex-end' }}>
-            <label style={{ flex: '1 1 180px' }}>Using<select value={stuntStat} onChange={e => setStuntStat(e.target.value)}>
+            <label style={{ flex: '1 1 180px' }}>Using{stuntAuto && guessStat(stuntText) ? ' (suggested from what you wrote)' : ''}<select value={stuntStat} onChange={e => { setStuntStat(e.target.value); setStuntAuto(false); }}>
               {STATS6.map(([k, l]) => <option key={k} value={k}>{l} ({({ atk: 'strength', spe: 'speed and agility', def: 'toughness', spa: 'cleverness', spd: 'focus', heart: 'charm' } as Record<string, string>)[k]}) {fmt(M(actor, k as 'atk'))}</option>)}
             </select></label>
             <button className="btn primary" type="submit">Ask Dennis</button>
           </div>
-          <p className="small muted tip" style={{ margin: '6px 0 0' }}>Dennis says how hard it is. Pull it off and your next attack gets advantage, plus bonus damage for harder stunts. Fail and it has disadvantage.</p>
+          <p className="small muted tip" style={{ margin: '6px 0 0' }}>Dennis says how hard it is, then you roll. Pull it off and your next attack gets advantage, plus bonus damage for harder stunts. Fail and it has disadvantage.</p>
         </form>
       ) : null}
       <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}><button className="btn ghost" onClick={() => onTurn(() => nextTurn())}>Skip turn</button></div>
@@ -540,7 +564,7 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
     if (xx.hpCur <= 0 && !(xx.kind === 'enemy' && xx.outReason)) handleKO(xx, null);
     checkEnd();
   });
-  const stg = Object.entries(b.stage?.[x.id] || {}).filter(([, v]) => v);
+  const stg = Object.entries(b.stage?.[x.id] || {}).filter(([, v]) => v), waiting = pendingFx(x);
   return (
     <div key={hit ? b.last!.id : 'c'} className={`combatant ${acting ? 'cur' : ''} ${isOut(x) ? 'out' : ''} ${sideOf(o) === 'enemy' ? 'foe' : ''} ${hit ? 'flash' : ''}`}>
       <div className="row between" style={{ flexWrap: 'nowrap' }}>
@@ -570,9 +594,10 @@ function Combatant({ b, o, k }: { b: Battle; o: OrderEntry; k: number }) {
         </div>
       ) : null}
       {status ? <div className="small" style={{ marginTop: 4, fontWeight: 700 }}>{status}</div> : null}
-      {!isOut(x) && (x.status || stg.length || (dm && !b.result)) ? (
+      {!isOut(x) && (x.status || stg.length || waiting.length || (dm && !b.result)) ? (
         <div className="row small" style={{ marginTop: 6, gap: 6 }}>
-          {x.status ? <span className="tag" title={STATUS[x.status].d}>{STATUS[x.status].g} {STATUS[x.status].n}</span> : null}
+          {x.status ? <span className="tag">{STATUS[x.status].g} {STATUS[x.status].n}: {STATUS[x.status].d}</span> : null}
+          {waiting.map(w => <span key={w.t} className={`eff ${w.good ? 'up' : 'down'}`}>{w.t}</span>)}
           {stg.map(([key, v]) => <span key={key} className={`eff ${v > 0 ? 'up' : 'down'}`}>{STAGE_NAME[key]} {fmt(v)}</span>)}
           {dm && !b.result ? (
             <select aria-label={`Status for ${nameOf(x)}`} style={{ width: 'auto' }} value={x.status || ''} onChange={ev => {

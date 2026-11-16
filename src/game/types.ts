@@ -99,7 +99,7 @@ export interface Battle {
   /** Times each hero has triggered its ability this battle. */
   uses?: Record<string, number>;
   /** A stunt a player described, waiting for the DM to say how hard it is. `stat` is the ability it rolls. */
-  stunt?: { id: string; text: string; stat: string };
+  stunt?: { id: string; text: string; stat: string; /** Set once the DM approves it: easy, tricky or wild. */ level?: string };
   /** A player picked this move (-1 is Purify) and is rolling real dice; the DM types the result in. */
   ask?: { move: number; target: string };
   /** Stat changes from moves like Growl and Swords Dance, by fighter id: -3 to +3 each, until the battle ends. */

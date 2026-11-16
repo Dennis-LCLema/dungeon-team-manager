@@ -189,7 +189,7 @@ export function setStatus(x: Fighter, st: Status | null): string {
   const t = typesOf(x).find(ty => STATUS[st].immune.includes(ty));
   if (t) return `${nameOf(x)} is ${T(t)} type, so it can't be ${STATUS[st].n.toLowerCase()}.`;
   x.status = st;
-  return `${nameOf(x)} is ${STATUS[st].n.toLowerCase()}! ${STATUS[st].g}`;
+  return `${nameOf(x)} is ${STATUS[st].n.toLowerCase()}! ${STATUS[st].g} ${STATUS[st].d}`;
 }
 
 /** Start-of-turn status effects. Returns true if the fighter loses this turn. */
@@ -361,7 +361,7 @@ export function resolveMove(actor: Fighter, mv: Move, target: Fighter, manual?: 
   if (dmg > 0 && tab === 'steadfast') flag(target.id).steady = true;
   // The move's own status chance (Ember 10% burn), rolled here so nobody has to remember it.
   const side = dmg > 0 && target.hpCur > 0 && !target.status ? sideStatus(mv.desc) : null;
-  if (side && roll(100) <= side.pct) { setStatus(target, side.st); if (target.status === side.st) extra += ` ${tn} is ${STATUS[side.st].n.toLowerCase()}! ${STATUS[side.st].g}`; }
+  if (side && roll(100) <= side.pct) { const msg = setStatus(target, side.st); if (target.status === side.st) extra += ' ' + msg; }
   if (dmg > 0) {
     if (tr.drain && actor.hpCur > 0) { const heal = Math.min(hpMaxOf(actor) - actor.hpCur, Math.max(1, Math.floor(dmg * tr.drain))); if (heal > 0) { actor.hpCur += heal; extra += ` ${who} drained ${heal} HP.`; } }
     if (tr.recoil && ab !== 'rock-head') { const rc = Math.max(1, Math.floor(dmg * tr.recoil)); actor.hpCur = Math.max(0, actor.hpCur - rc); extra += ` ${who} took ${rc} recoil.`; }
@@ -478,7 +478,7 @@ function shiftStages(x: Fighter, sf: { by: number; stats: string[] }) {
     s[key] = clampN(old + by, -3, 3);
     return s[key] !== old;
   });
-  return moved.length ? `${nameOf(x)}'s ${moved.map(k => STAGE_NAME[k]).join(' and ')} ${sf.by > 0 ? 'rose' : 'fell'}!` : `${nameOf(x)}'s stats can't go any ${sf.by > 0 ? 'higher' : 'lower'}.`;
+  return moved.length ? `${nameOf(x)}'s ${moved.map(k => STAGE_NAME[k]).join(' and ')} ${sf.by > 0 ? 'rose' : 'fell'}: ${stageHelp(moved, sf.by)}.` : `${nameOf(x)}'s stats can't go any ${sf.by > 0 ? 'higher' : 'lower'}.`;
 }
 
 const STAGE_MEANS: Record<string, string> = {
@@ -578,20 +578,47 @@ export const STUNTS: Record<string, { n: string; dc: number; flag: string; win: 
   tricky: { n: 'Tricky', dc: 13, flag: 'power', win: 'advantage and +1d6 damage' },
   wild: { n: 'Wild', dc: 16, flag: 'wild', win: 'advantage and +2d6 damage' },
 };
-/** The DM rules on the waiting stunt: an ability check against the difficulty, rolled by the app or typed in from real dice.
-    It doesn't use the turn. A natural 20 always works and a natural 1 never does. */
-export function resolveStunt(level: string, typed?: number) {
-  const b = BT(), st = b?.stunt, L = STUNTS[level];
-  if (!b || !st || !L || !isDM()) return;
-  const actor = bGet(b.order.find(o => o.id === st.id));
+/** Roll the stunt the DM approved: an ability check against its difficulty. The player taps Roll (or the DM does it for
+    them, or types in real dice). It doesn't use the turn. A natural 20 always works and a natural 1 never does. */
+export function resolveStunt(typed?: number) {
+  const b = BT(), st = b?.stunt, L = st?.level ? STUNTS[st.level] : null, o = b?.order.find(x => x.id === st?.id);
+  if (!b || !st || !L || !o || !controls(o)) return;
+  const actor = bGet(o), real = isDM() && typed != null; // only the DM can enter a d20 rolled at the table
   delete b.stunt;
   if (!actor || isOut(actor)) return;
-  const who = nameOf(actor), stat = st.stat as Parameters<typeof M>[1], d = typed ?? roll(20), m = M(actor, stat), ok = d !== 1 && (d === 20 || d + m >= L.dc);
+  const who = nameOf(actor), stat = st.stat as Parameters<typeof M>[1], d = real ? typed! : roll(20), m = M(actor, stat), ok = d !== 1 && (d === 20 || d + m >= L.dc);
   Object.assign(flag(actor.id), ok ? { [L.flag]: true } : { off: true }, { stunted: true });
   const res: AttackResult = { id: uid(), actor: who, actorSide: 'team', target: who, move: 'a stunt', moveType: typesOf(actor)[0] || 'normal', status: true, stunt: true,
-    save: `“${st.text}” Check ${d}${fmt(m)} = ${d + m} vs ${L.n} ${L.dc}${typed != null ? ' (real dice)' : ''}: ${ok ? `it works! ${who} gets ${L.win} on its next attack.` : `it goes wrong. ${who} has disadvantage on its next attack.`}` };
+    save: `“${st.text}” Check ${d}${fmt(m)} = ${d + m} vs ${L.n} ${L.dc}${real ? ' (real dice)' : ''}: ${ok ? `it works! ${who} gets ${L.win} on its next attack.` : `it goes wrong. ${who} has disadvantage on its next attack.`}` };
   blog(`${who} tries a stunt. ${res.save}`);
   b.last = res;
+}
+
+/** A first guess at which ability a stunt uses, from its wording. The player can change it, and so can the DM. */
+const STUNT_WORDS: [RegExp, string][] = [
+  [/taunt|distract|charm|intimidat|roar|bluff|convinc|inspir|shout|scare|cheer|sing|mock|flatter/i, 'heart'],
+  [/flip|jump|leap|dodge|spin|dash|slide|climb|swing|vault|sneak|dart|weav|balanc|somersault|cartwheel|sprint|tumble/i, 'spe'],
+  [/smash|slam|lift|throw|push|shove|charge|crush|break|punch|drag|wrestl|\bram\b|hurl|rip/i, 'atk'],
+  [/endur|brace|withstand|hold on|block|grit|shrug|tough it/i, 'def'],
+  [/trick|plan|\baim|calculat|study|outsmart|trap|angle|ricochet|bounce off|\brig\b|feint/i, 'spa'],
+  [/sense|notice|focus|calm|listen|watch|predict|\bfeel|wait for|read (its|the|their)/i, 'spd'],
+];
+export const guessStat = (text: string) => STUNT_WORDS.find(([re]) => re.test(text))?.[1] || null;
+
+/** One-shot effects waiting on a fighter, in words, so everyone can see what its next move (or the next hit on it) will do. */
+export function pendingFx(x: Fighter): { t: string; good: boolean }[] {
+  const f = BT()?.flags?.[x.id] || {}, out: { t: string; good: boolean }[] = [];
+  const insp = x.kind !== 'enemy' && !!x.inspired;
+  if (f.wild) out.push({ t: 'Next attack: advantage and +2d6', good: true });
+  else if (f.power) out.push({ t: 'Next attack: advantage and +1d6', good: true });
+  else if (f.edge || insp) out.push({ t: 'Next attack: advantage', good: true });
+  if (f.steady) out.push({ t: 'Next attack: +2 to hit', good: true });
+  if (f.off) out.push({ t: 'Next attack: disadvantage', good: false });
+  if (f.protect) out.push({ t: 'Blocks the next attack on it', good: true });
+  if (f.guard) out.push({ t: 'Next hit on it is halved', good: true });
+  if (f.flash) out.push({ t: 'Fire moves +1d6', good: true });
+  if (f.recharge) out.push({ t: 'Loses its next turn', good: false });
+  return out;
 }
 
 /* ---------- Abilities a player triggers ---------- */

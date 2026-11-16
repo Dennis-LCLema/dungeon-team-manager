@@ -118,9 +118,9 @@ function Setup() {
 const ord = (n: number) => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
 
 /** One fighter's initiative dice: they tumble through random faces, then land on the real roll and show the total. */
-function InitRoll({ o, delay }: { o: OrderEntry; delay: number }) {
+function InitRoll({ o, delay, quiet }: { o: OrderEntry; delay: number; quiet?: boolean }) {
   const [wait] = useState(delay); // keep the first delay, so a re-sorted list doesn't re-roll everyone
-  const [rolling, setRolling] = useState(() => !stillMotion());
+  const [rolling, setRolling] = useState(() => !quiet && !stillMotion());
   useEffect(() => {
     const t = setTimeout(() => setRolling(false), wait + 1000);
     return () => clearTimeout(t);
@@ -138,6 +138,37 @@ function Intro({ b }: { b: Battle }) {
   const dm = isDM();
   const mine = b.order.map((o, i) => [o, i] as const).filter(([o]) => o.ref === 'pc' && owns(bGet(o) as Char));
   useEffect(() => { sfx('dice'); }, []);
+  // A player first watches their own dice thrown and landing, big. Then the full turn order appears with everyone's numbers.
+  const [stage, setStage] = useState<'roll' | 'land' | 'list'>(() => (mine.length && !dm && !stillMotion() ? 'roll' : 'list'));
+  const [sawOwn] = useState(stage !== 'list'); // their rows then show the numbers without rolling a second time
+  useEffect(() => {
+    if (stage === 'list') return;
+    const t = setTimeout(() => setStage(stage === 'roll' ? 'land' : 'list'), stage === 'roll' ? 1200 : 1700);
+    return () => clearTimeout(t);
+  }, [stage]);
+  if (stage !== 'list') return (
+    <button type="button" className="card callout intro myrolls" aria-label="Your initiative roll. Tap to skip." onClick={() => setStage('list')}>
+      <h2 style={{ margin: 0 }}>Roll for initiative!</h2>
+      <div className="myrolls-row">
+        {mine.map(([o]) => {
+          const x = bGet(o)!;
+          return (
+            <div key={o.id} className="myroll">
+              <Avatar c={x} size={44} /><b>{nameOf(x)}</b>
+              <div className="row" style={{ gap: 10, justifyContent: 'center', flexWrap: 'nowrap' }}>
+                <Die value={o.r1} rolling={stage === 'roll'} size={96} ms={1200} from={['-40vw', '18vh']} />
+                {o.r2 != null ? <Die value={o.r2} rolling={stage === 'roll'} size={96} ms={1200} delay={90} from={['-40vw', '18vh']} /> : null}
+              </div>
+              {stage === 'land'
+                ? <div className="mono">{o.r2 != null ? `lower of the two, ${Math.min(o.r1, o.r2)} ` : `${o.r1} `}{fmt(o.mod)} = <b style={{ fontSize: 22 }}>{o.init}</b></div>
+                : <div className="small muted">Rolling…</div>}
+            </div>
+          );
+        })}
+      </div>
+      <span className="small muted">Tap to skip</span>
+    </button>
+  );
   return (
     <div className="card callout intro anim">
       <div className="row" style={{ gap: 12, flexWrap: 'nowrap' }}>
@@ -156,7 +187,7 @@ function Intro({ b }: { b: Battle }) {
             <li key={o.id} className={`${sideOf(o) === 'enemy' ? 'foe' : ''} ${o.ref === 'pc' && owns(x as Char) ? 'me' : ''}`} style={{ '--d': i * 0.18 + 's' } as React.CSSProperties}>
               <span className="ipos">{i + 1}</span><Avatar c={x} size={30} />
               <span className="grow"><b>{nameOf(x)}</b> <span className="small muted">{sideOf(o) === 'enemy' ? 'Foe' : 'Team'}</span></span>
-              <InitRoll key={`${o.r1}:${o.r2}`} o={o} delay={i * 180} />
+              <InitRoll key={`${o.r1}:${o.r2}`} o={o} delay={i * 180} quiet={sawOwn} />
               {dm ? (
                 <input type="number" min={1} max={20} className="initedit" key={o.r1} defaultValue={o.r1} title="Type the d20 they rolled with their own dice" aria-label={`d20 that ${nameOf(x)} rolled`}
                   onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}

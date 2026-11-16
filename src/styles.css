@@ -435,3 +435,8 @@ main{padding-bottom:84px}
 .mv-t{font-size:11.5px;font-weight:600;color:var(--ink);opacity:.85}
 
 .tag,.eff{white-space:normal}
+
+/* A player's own initiative roll, shown big before the turn order */
+.myrolls{display:grid;justify-items:center;gap:10px;width:100%;text-align:center;font:inherit;color:inherit;cursor:pointer;overflow:hidden}
+.myrolls-row{display:flex;flex-wrap:wrap;gap:22px;justify-content:center;margin:10px 0}
+.myroll{display:grid;justify-items:center;gap:6px}

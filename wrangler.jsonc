@@ -1,0 +1,8 @@
+// Cloudflare deploys the AI relay (worker/ai-relay.js) from this repo on every push.
+// The game site itself is served by GitHub Pages, so no site files are uploaded here.
+// The relay's two secrets (ANTHROPIC_API_KEY, GAME_CODE) are set in the Cloudflare dashboard, never in this file.
+{
+  "name": "dungeon-team-manager",
+  "main": "worker/ai-relay.js",
+  "compatibility_date": "2025-01-01"
+}
